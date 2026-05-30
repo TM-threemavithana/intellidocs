@@ -1,0 +1,188 @@
+// This is your Prisma schema file.
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String     // bcrypt hashed, never plain text
+  name      String?
+  role      String     @default("user") // "user" or "admin"
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+  documents            Document[]
+  documentCollections  DocumentCollection[]
+  chats                Chat[]
+  detectionResults     DetectionResult[]
+
+  @@index([email])
+}
+
+// Document model - stores PDF metadata
+model Document {
+  id            String    @id @default(cuid())
+  userId        String
+  fileName      String
+  fileSize      Int       // in bytes
+  pageCount     Int       // number of pages
+  storageUrl    String    // MinIO path: s3://bucket/path/file.pdf
+  ocrApplied    Boolean   @default(false)
+  ocrLanguages  String[]  @default([]) // languages detected: ["en", "si", "ta"]
+  isDeleted     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  embeddings        Embedding[]
+  ocrResults        OCRResult[]
+  chats             Chat[]
+  collectionDocs    CollectionDocument[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Document collections for cross-document search
+model DocumentCollection {
+  id          String     @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents        CollectionDocument[]
+  chats            Chat[]
+
+  @@index([userId])
+}
+
+// Join table for many-to-many Document <-> DocumentCollection
+model CollectionDocument {
+  id           String    @id @default(cuid())
+  collectionId String
+  documentId   String
+  createdAt    DateTime  @default(now())
+
+  // Relations
+  collection   DocumentCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  document     Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, documentId])
+}
+
+// Embedding model - stores chunks + vectors
+model Embedding {
+  id           String    @id @default(cuid())
+  documentId   String
+  chunkText    String    @db.Text // actual text chunk
+  vectorId     String    // reference to ChromaDB vector ID
+  pageNumber   Int       // which page in PDF
+  chunkIndex   Int       // order within page
+  chunkSize    Int       // number of tokens
+  createdAt    DateTime  @default(now())
+
+  // Relations
+  document     Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([vectorId])
+}
+
+// Chat model - conversation history
+model Chat {
+  id             String    @id @default(cuid())
+  userId         String
+  documentId     String?
+  collectionId   String?
+  question       String    @db.Text
+  answer         String    @db.Text
+  // JSON array of citations: [{docId, docName, pageNumber, chunkIndex}, ...]
+  sourceCitations Json
+  modelUsed      String    // "ollama", "groq", "gemini"
+  latencyMs      Int       // response time
+  createdAt      DateTime  @default(now())
+
+  // Relations
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document       Document?           @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  collection     DocumentCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([collectionId])
+  @@index([createdAt])
+}
+
+// OCR results - stores extraction output and metrics
+model OCRResult {
+  id                 String    @id @default(cuid())
+  documentId         String
+  pageNumber         Int       // which page
+  rawText            String    @db.Text // extracted text
+  language           String    // detected language: "en", "si", "ta", etc.
+  // Character Error Rate: 0-1 (0 is perfect)
+  cerScore           Float?
+  // Word Error Rate: 0-1 (0 is perfect)
+  werScore           Float?
+  // Tesseract confidence: 0-100
+  tesseractConfidence Float?
+  createdAt          DateTime  @default(now())
+
+  // Relations
+  document           Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([pageNumber])
+  @@index([language])
+}
+
+// AI Content Detection results
+model DetectionResult {
+  id             String    @id @default(cuid())
+  userId         String
+  textHash       String    @unique // hash of analyzed text
+  aiProbability  Float     // 0-1 (probability it's AI-generated)
+  confidence     String    // "low", "medium", "high"
+  // Signal 1: perplexity score (lower = more AI-like)
+  perplexityScore Float?
+  // Signal 2: burstiness score (lower = more AI-like)
+  burstnessScore Float?
+  // Highlighted sentences that indicate AI
+  highlightedSentences String[] @default([])
+  createdAt      DateTime  @default(now())
+
+  // Relations
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Subscription model for future monetization
+model Subscription {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  plan      String    // "free", "pro", "business", "enterprise"
+  stripeId  String?   // Stripe customer ID
+  startDate DateTime  @default(now())
+  endDate   DateTime? // null for active subscriptions
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+}
