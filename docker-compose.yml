@@ -78,6 +78,64 @@ services:
     networks:
       - intellidocs-network
 
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: intellidocs-backend
+    ports:
+      - "3000:3000"
+    environment:
+      # Database - use service name instead of localhost
+      DATABASE_URL: postgresql://intellidocs@postgres:5432/intellidocs_db?schema=public
+      
+      # Redis - use service name
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # MinIO - use service name
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin_password
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET_NAME: intellidocs-documents
+      
+      # Ollama - use service name
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama2
+      
+      # Application
+      NODE_ENV: development
+      PORT: 3000
+      API_BASE_URL: http://localhost:3000
+      FRONTEND_URL: http://localhost:3001
+      
+      # JWT
+      JWT_SECRET: your_super_secret_jwt_key_change_this_in_production
+      JWT_EXPIRATION: 7d
+      
+      # Logging
+      LOG_LEVEL: debug
+      
+      # File Upload
+      MAX_FILE_SIZE: 52428800
+      ALLOWED_MIME_TYPES: application/pdf,image/png,image/jpeg
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - /app/dist
+    networks:
+      - intellidocs-network
+    command: npm run start:dev
+
 volumes:
   postgres_data:
   redis_data:

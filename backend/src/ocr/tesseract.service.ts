@@ -1,21 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import Tesseract from 'tesseract.js';
+import * as Tesseract from 'tesseract.js';
 
 @Injectable()
 export class TesseractService {
   private readonly logger = new Logger(TesseractService.name);
 
   async recognize(buffer: Buffer, lang = 'eng') {
+    let worker: Tesseract.Worker | undefined;
     try {
       this.logger.debug(`Starting OCR with lang=${lang}, bytes=${buffer.length}`);
-      const worker = Tesseract.createWorker({
-        // you can configure logger here if needed
-      });
-      await worker.load();
-      await worker.loadLanguage(lang);
-      await worker.initialize(lang);
+      worker = await Tesseract.createWorker(lang);
       const { data } = await worker.recognize(buffer);
-      await worker.terminate();
       return {
         text: data.text,
         confidence: data.confidence,
@@ -25,6 +20,10 @@ export class TesseractService {
     } catch (err) {
       this.logger.error('Tesseract recognition failed', err as any);
       throw err;
+    } finally {
+      if (worker) {
+        await worker.terminate();
+      }
     }
   }
 }
