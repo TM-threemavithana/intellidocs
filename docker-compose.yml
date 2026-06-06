@@ -78,6 +78,25 @@ services:
     networks:
       - intellidocs-network
 
+  # ChromaDB Vector Database
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: intellidocs-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intellidocs-network
+
   # Backend API
   backend:
     build:
@@ -104,6 +123,10 @@ services:
       # Ollama - use service name
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: llama2
+      
+      # ChromaDB - use service name
+      CHROMADB_URL: http://chromadb:8000
+      CHROMADB_COLLECTION: intellidocs_embeddings
       
       # Application
       NODE_ENV: development
@@ -141,6 +164,7 @@ volumes:
   redis_data:
   minio_data:
   ollama_data:
+  chromadb_data:
 
 networks:
   intellidocs-network:

@@ -26,6 +26,8 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
+    "@langchain/community": "^0.0.57",
+    "@langchain/core": "^0.1.0",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^10.2.10",
     "@nestjs/config": "^4.0.4",
@@ -37,6 +39,7 @@
     "@types/multer": "^1.4.11",
     "bcryptjs": "^2.4.3",
     "bull": "^4.16.5",
+    "chromadb": "^1.10.5",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "graphql": "^16.8.1",
@@ -50,7 +53,8 @@
     "rimraf": "^5.0.5",
     "rxjs": "^7.8.1",
     "sharp": "^0.34.5",
-    "tesseract.js": "^5.1.1"
+    "tesseract.js": "^5.1.1",
+    "tiktoken": "^1.0.22"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.1",

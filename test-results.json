@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-06-06T10:46:37.855Z",
+  "duration": "16489ms",
+  "summary": {
+    "total": 10,
+    "passed": 9,
+    "failed": 1,
+    "passRate": "90.0%"
+  },
+  "tests": [
+    {
+      "name": "1. Backend Health Check",
+      "status": "PASS",
+      "details": "Backend healthy, 3 embeddings found"
+    },
+    {
+      "name": "2. Embeddings Statistics",
+      "status": "PASS",
+      "details": "ChromaDB: 3 embeddings, DB: 3 records"
+    },
+    {
+      "name": "3. Semantic Search",
+      "status": "FAIL",
+      "details": "Search failed"
+    },
+    {
+      "name": "4. Chat Statistics",
+      "status": "PASS",
+      "details": "Total chats: 0, Avg latency: 0ms"
+    },
+    {
+      "name": "5. Chat History",
+      "status": "PASS",
+      "details": "Retrieved 0 messages"
+    },
+    {
+      "name": "6. Document History",
+      "status": "PASS",
+      "details": "Retrieved 0 messages for document"
+    },
+    {
+      "name": "7. Multiple Search Queries",
+      "status": "PASS",
+      "details": "Tested 3 queries, got 0 total results"
+    },
+    {
+      "name": "8. Invalid Document ID Handling",
+      "status": "PASS",
+      "details": "Handled invalid ID gracefully"
+    },
+    {
+      "name": "9. Search Edge Cases",
+      "status": "PASS",
+      "details": "Tested empty, long, and special character queries"
+    },
+    {
+      "name": "10. Performance Test",
+      "status": "PASS",
+      "details": "3 concurrent requests completed in 214ms"
+    }
+  ]
+}

@@ -5,6 +5,8 @@ import { OcrModule } from './ocr/ocr.module';
 import { DatabaseModule } from './database/database.module';
 import { StorageModule } from './storage/storage.module';
 import { DocumentsModule } from './documents/documents.module';
+import { EmbeddingsModule } from './embeddings/embeddings.module';
+import { RAGModule } from './rag/rag.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { DocumentsModule } from './documents/documents.module';
     StorageModule,
     OcrModule,
     DocumentsModule,
+    EmbeddingsModule,
+    RAGModule,
   ],
 })
 export class AppModule {}

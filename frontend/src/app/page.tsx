@@ -35,6 +35,22 @@ export default function Home() {
           <p className="text-lg text-gray-600">
             Multi-language OCR with CER/WER Evaluation
           </p>
+          
+          {/* Navigation */}
+          <div className="mt-6 flex justify-center gap-4">
+            <a
+              href="/"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              📄 Document Upload
+            </a>
+            <a
+              href="/chat"
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              💬 Chat with Documents
+            </a>
+          </div>
         </div>
 
         {/* Main Content */}

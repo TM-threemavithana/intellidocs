@@ -131,3 +131,6 @@ package-lock.json~
 # OS Temporary Folders
 $RECYCLE.BIN/
 .vscode-test/
+
+# Documentation Files (All Markdown files including README)
+*.md
