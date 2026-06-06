@@ -9,14 +9,35 @@ export const api = axios.create({
   },
 });
 
-// Add request interceptor for auth token (if needed)
+// Add request interceptor for auth token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // Get token from localStorage (Zustand persist)
+  if (typeof window !== 'undefined') {
+    const authStorage = localStorage.getItem('auth-storage');
+    if (authStorage) {
+      const { state } = JSON.parse(authStorage);
+      if (state?.token) {
+        config.headers.Authorization = `Bearer ${state.token}`;
+      }
+    }
   }
   return config;
 });
+
+// Add response interceptor for handling 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Clear auth and redirect to login
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('auth-storage');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Document API
 export const documentApi = {
@@ -216,6 +237,61 @@ export const embeddingsApi = {
    */
   delete: async (documentId: string) => {
     const response = await api.delete(`/embeddings/${documentId}`);
+    return response.data;
+  },
+};
+
+// PDF Toolkit API
+export const pdfToolkitApi = {
+  /**
+   * Merge multiple PDF files
+   */
+  merge: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+
+    const response = await api.post('/pdf-toolkit/merge', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      responseType: 'blob',
+    });
+
+    return response.data;
+  },
+
+  /**
+   * Split a PDF file
+   */
+  split: async (file: File, ranges: { start: number; end: number }[]) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('ranges', JSON.stringify(ranges));
+
+    const response = await api.post('/pdf-toolkit/split', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      responseType: 'blob',
+    });
+
+    return response.data;
+  },
+
+  /**
+   * Convert images to a single PDF
+   */
+  convert: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+
+    const response = await api.post('/pdf-toolkit/convert', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      responseType: 'blob',
+    });
+
     return response.data;
   },
 };

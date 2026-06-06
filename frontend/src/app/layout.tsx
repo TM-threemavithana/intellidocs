@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
+import { Navbar } from '@/components/layout/Navbar';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'IntelliDocs AI - OCR Pipeline',
-  description: 'Multi-language OCR with CER/WER Evaluation',
+  title: 'IntelliDocs AI - Intelligent Document Management',
+  description: 'AI-powered document management with OCR, RAG, and search capabilities',
 };
 
 export default function RootLayout({
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Navbar />
+        {children}
+      </body>
     </html>
   );
 }

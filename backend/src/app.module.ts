@@ -1,15 +1,19 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
-import { OcrModule } from './ocr/ocr.module';
-import { DatabaseModule } from './database/database.module';
-import { StorageModule } from './storage/storage.module';
-import { DocumentsModule } from './documents/documents.module';
-import { EmbeddingsModule } from './embeddings/embeddings.module';
-import { RAGModule } from './rag/rag.module';
-import { CollectionsModule } from './collections/collections.module';
-import { CommonModule } from './common/common.module';
-import { SearchModule } from './search/search.module';
+import { DatabaseModule } from './core/database/database.module';
+import { StorageModule } from './core/storage/storage.module';
+import { CachingModule } from './core/caching/caching.module';
+import { OcrModule } from './features/ocr/ocr.module';
+import { DocumentsModule } from './features/documents/documents.module';
+import { EmbeddingsModule } from './features/embeddings/embeddings.module';
+import { RAGModule } from './features/rag/rag.module';
+import { CollectionsModule } from './features/collections/collections.module';
+import { SearchModule } from './features/search/search.module';
+import { AnalyticsModule } from './features/analytics/analytics.module';
+import { AuthModule } from './features/auth/auth.module';
+import { UsersModule } from './features/users/users.module';
+import { PdfToolkitModule } from './features/pdf-toolkit/pdf-toolkit.module';
 
 @Module({
   imports: [
@@ -23,15 +27,19 @@ import { SearchModule } from './search/search.module';
         port: parseInt(process.env.REDIS_PORT || '6379'),
       },
     }),
-    CommonModule,
     DatabaseModule,
     StorageModule,
+    CachingModule,
     OcrModule,
     DocumentsModule,
     EmbeddingsModule,
     RAGModule,
     CollectionsModule,
     SearchModule,
+    AnalyticsModule,
+    AuthModule,
+    UsersModule,
+    PdfToolkitModule,
   ],
 })
 export class AppModule {}
