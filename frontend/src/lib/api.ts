@@ -295,3 +295,23 @@ export const pdfToolkitApi = {
     return response.data;
   },
 };
+
+// Resume Analyzer API
+export const resumeAnalyzerApi = {
+  /**
+   * Analyze a resume against a job description
+   */
+  analyze: async (file: File, jobDescription: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('jobDescription', jobDescription);
+
+    const response = await api.post('/resume-analyzer/analyze', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    return response.data;
+  },
+};

@@ -14,6 +14,7 @@ import { AnalyticsModule } from './features/analytics/analytics.module';
 import { AuthModule } from './features/auth/auth.module';
 import { UsersModule } from './features/users/users.module';
 import { PdfToolkitModule } from './features/pdf-toolkit/pdf-toolkit.module';
+import { ResumeAnalyzerModule } from './features/resume-analyzer/resume-analyzer.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { PdfToolkitModule } from './features/pdf-toolkit/pdf-toolkit.module';
     AuthModule,
     UsersModule,
     PdfToolkitModule,
+    ResumeAnalyzerModule,
   ],
 })
 export class AppModule {}
