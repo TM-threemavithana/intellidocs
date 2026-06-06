@@ -7,6 +7,9 @@ import { StorageModule } from './storage/storage.module';
 import { DocumentsModule } from './documents/documents.module';
 import { EmbeddingsModule } from './embeddings/embeddings.module';
 import { RAGModule } from './rag/rag.module';
+import { CollectionsModule } from './collections/collections.module';
+import { CommonModule } from './common/common.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -20,12 +23,15 @@ import { RAGModule } from './rag/rag.module';
         port: parseInt(process.env.REDIS_PORT || '6379'),
       },
     }),
+    CommonModule,
     DatabaseModule,
     StorageModule,
     OcrModule,
     DocumentsModule,
     EmbeddingsModule,
     RAGModule,
+    CollectionsModule,
+    SearchModule,
   ],
 })
 export class AppModule {}
