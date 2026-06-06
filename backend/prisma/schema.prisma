@@ -25,7 +25,9 @@ model User {
   documents            Document[]
   documentCollections  DocumentCollection[]
   chats                Chat[]
+  conversations        Conversation[]
   detectionResults     DetectionResult[]
+  searchHistory        SearchHistory[]
 
   @@index([email])
 }
@@ -110,6 +112,7 @@ model Chat {
   userId         String
   documentId     String?
   collectionId   String?
+  conversationId String?   // Link to conversation
   question       String    @db.Text
   answer         String    @db.Text
   // JSON array of citations: [{docId, docName, pageNumber, chunkIndex}, ...]
@@ -122,11 +125,32 @@ model Chat {
   user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   document       Document?           @relation(fields: [documentId], references: [id], onDelete: SetNull)
   collection     DocumentCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  conversation   Conversation?       @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([documentId])
   @@index([collectionId])
+  @@index([conversationId])
   @@index([createdAt])
+}
+
+// Conversation model for multi-turn conversations
+model Conversation {
+  id          String    @id @default(cuid())
+  userId      String
+  title       String?
+  context     Json      // Conversation context tracking
+  messageCount Int      @default(0)
+  lastMessageAt DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    Chat[]
+
+  @@index([userId])
+  @@index([lastMessageAt])
 }
 
 // OCR results - stores extraction output and metrics
@@ -171,6 +195,26 @@ model DetectionResult {
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([createdAt])
+}
+
+// Search history for tracking user queries
+model SearchHistory {
+  id              String    @id @default(cuid())
+  userId          String
+  query           String    @db.Text
+  resultsCount    Int       // Number of results returned
+  filters         Json?     // Applied filters
+  searchType      String    // "hybrid", "vector", "keyword"
+  timeTaken       Int       // Milliseconds
+  clickedResults  String[]  @default([]) // Document IDs clicked
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([query])
   @@index([createdAt])
 }
 
