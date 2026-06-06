@@ -8,22 +8,32 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
+import { StreamingService } from './streaming.service';
+import { CitationsService } from './citations.service';
+import { Observable, interval, map } from 'rxjs';
 
 class AskQuestionDto {
   question: string;
   documentId?: string;
   collectionId?: string;
+  conversationId?: string; // For multi-turn conversations
   userId?: string; // In production, get from auth token
 }
 
 @Controller('chat')
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly streamingService: StreamingService,
+    private readonly citationsService: CitationsService,
+  ) {}
 
   /**
-   * Ask a question using RAG
+   * Ask a question using RAG (with conversation support)
    */
   @Post('ask')
   @HttpCode(HttpStatus.OK)
@@ -36,6 +46,7 @@ export class ChatController {
       dto.question,
       dto.documentId,
       dto.collectionId,
+      dto.conversationId, // Pass conversation ID
     );
 
     return {
@@ -134,6 +145,65 @@ export class ChatController {
   async getStats(@Query('userId') userId?: string) {
     const user = userId || 'default-user';
     const stats = await this.chatService.getStats(user);
+
+    return {
+      success: true,
+      data: stats,
+    };
+  }
+
+  /**
+   * Stream chat response (Server-Sent Events)
+   * GET /chat/stream?question=...&documentId=...&userId=...
+   */
+  @Get('stream')
+  @Sse()
+  streamResponse(
+    @Query('question') question: string,
+    @Query('documentId') documentId?: string,
+    @Query('userId') userId?: string,
+  ): Observable<MessageEvent> {
+    const user = userId || 'default-user';
+
+    // This is a simplified streaming endpoint
+    // In production, you'd want to:
+    // 1. Retrieve context from embeddings
+    // 2. Stream the LLM response
+    // 3. Send citations as separate events
+
+    return new Observable((subscriber) => {
+      const prompt = `Question: ${question}\n\nProvide a concise answer.`;
+      
+      this.streamingService.streamLLMResponse(prompt).subscribe({
+        next: (chunk) => {
+          subscriber.next({
+            data: chunk,
+          } as MessageEvent);
+        },
+        error: (error) => {
+          subscriber.next({
+            data: { type: 'error', error: error.message },
+          } as MessageEvent);
+          subscriber.complete();
+        },
+        complete: () => subscriber.complete(),
+      });
+    });
+  }
+
+  /**
+   * Get citation statistics
+   * GET /chat/citations/stats?documentId=...&userId=...
+   */
+  @Get('citations/stats')
+  async getCitationStats(
+    @Query('documentId') documentId?: string,
+    @Query('userId') userId?: string,
+  ) {
+    const stats = await this.citationsService.getCitationStatistics(
+      documentId,
+      userId,
+    );
 
     return {
       success: true,
