@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { OllamaService } from '../embeddings/ollama.service';
+import { QueryEnhancementService } from '../embeddings/query-enhancement.service';
+import { ConversationsService } from './conversations.service';
+import { CachingService } from '../common/caching.service';
 
 export interface Citation {
   documentId: string;
@@ -27,6 +30,9 @@ export class RAGService {
   constructor(
     private readonly embeddingsService: EmbeddingsService,
     private readonly ollamaService: OllamaService,
+    private readonly queryEnhancementService: QueryEnhancementService,
+    private readonly conversationsService: ConversationsService,
+    private readonly cachingService: CachingService,
   ) {}
 
   /**
@@ -36,18 +42,55 @@ export class RAGService {
     query: string,
     documentIds?: string[],
     topK: number = 5,
+    conversationId?: string,
+    userId?: string,
   ): Promise<RAGResponse> {
     const startTime = Date.now();
     this.logger.log(`RAG Query: "${query.substring(0, 50)}..."`);
 
     try {
-      // Step 1: Retrieve relevant chunks
-      this.logger.debug('Step 1: Retrieving relevant chunks');
-      const searchResults = await this.embeddingsService.search(
-        query,
-        topK,
-        documentIds,
-      );
+      // Check cache first
+      const questionHash = this.cachingService.generateHash(query + (documentIds?.join(',') || ''));
+      const cachedResponse = await this.cachingService.getCachedLLMResponse(questionHash);
+      
+      if (cachedResponse) {
+        this.logger.log('✓ Cache hit for query');
+        return JSON.parse(cachedResponse);
+      }
+
+      // Step 1: Enhance query
+      this.logger.debug('Step 1: Enhancing query');
+      const enhancedQuery = await this.queryEnhancementService.enhanceQuery(query);
+      this.logger.debug(`Enhanced query - Intent: ${enhancedQuery.intent}, Rewritten: "${enhancedQuery.rewritten}"`);
+
+      // Step 2: Get conversation context if available
+      let conversationContext = '';
+      if (conversationId && userId) {
+        conversationContext = await this.conversationsService.getConversationContext(
+          conversationId,
+          userId,
+        );
+        this.logger.debug(`Using conversation context: ${conversationContext.substring(0, 100)}...`);
+      }
+
+      // Step 3: Check search cache
+      const searchHash = this.cachingService.generateHash(enhancedQuery.rewritten);
+      let searchResults = await this.cachingService.getCachedSearchResults(searchHash);
+      
+      if (!searchResults) {
+        // Retrieve relevant chunks (use enhanced query)
+        this.logger.debug('Step 3: Retrieving relevant chunks');
+        searchResults = await this.embeddingsService.search(
+          enhancedQuery.rewritten, // Use enhanced query
+          topK,
+          documentIds,
+        );
+        
+        // Cache search results
+        await this.cachingService.cacheSearchResults(searchHash, searchResults);
+      } else {
+        this.logger.log('✓ Cache hit for search results');
+      }
 
       if (searchResults.length === 0) {
         return {
@@ -59,11 +102,11 @@ export class RAGService {
         };
       }
 
-      // Step 2: Build context from retrieved chunks
-      this.logger.debug('Step 2: Building context');
-      const context = this.buildContext(searchResults);
+      // Step 4: Build context from retrieved chunks
+      this.logger.debug('Step 4: Building context');
+      const documentContext = this.buildContext(searchResults);
       
-      // Step 3: Build citations
+      // Step 5: Build citations
       const citations: Citation[] = searchResults.map(result => ({
         documentId: result.metadata.documentId,
         documentName: result.metadata.fileName || 'Unknown',
@@ -73,21 +116,26 @@ export class RAGService {
         text: result.text.substring(0, 200), // Preview
       }));
 
-      // Step 4: Generate answer using LLM
-      this.logger.debug('Step 3: Generating answer');
-      const prompt = this.buildPrompt(query, context);
+      // Step 6: Generate answer using LLM (with conversation context)
+      this.logger.debug('Step 6: Generating answer');
+      const prompt = this.buildPrompt(query, documentContext, conversationContext);
       const answer = await this.generateAnswer(prompt);
 
       const responseTime = Date.now() - startTime;
       this.logger.log(`✅ RAG completed in ${responseTime}ms`);
 
-      return {
+      const response: RAGResponse = {
         answer,
         citations,
         query,
-        contextUsed: context,
+        contextUsed: documentContext,
         responseTime,
       };
+
+      // Cache the response
+      await this.cachingService.cacheLLMResponse(questionHash, JSON.stringify(response));
+
+      return response;
     } catch (error) {
       this.logger.error('RAG error:', error);
       throw error;
@@ -117,24 +165,32 @@ export class RAGService {
   }
 
   /**
-   * Build prompt for LLM
+   * Build prompt for LLM (with optional conversation context)
    */
-  private buildPrompt(query: string, context: string): string {
-    return `You are a helpful AI assistant that answers questions based on document content.
+  private buildPrompt(query: string, documentContext: string, conversationContext?: string): string {
+    let prompt = `You are a helpful AI assistant that answers questions based on document content.\n\n`;
 
-Context from documents:
-${context}
+    // Add conversation context if available
+    if (conversationContext && conversationContext.trim().length > 0) {
+      prompt += `Previous conversation context:\n${conversationContext}\n\n`;
+    }
+
+    prompt += `Context from documents:
+${documentContext}
 
 Question: ${query}
 
 Instructions:
 - Answer based ONLY on the provided context above
+- If using previous conversation context, maintain consistency with earlier answers
 - If the answer is not in the context, say "I don't have enough information to answer this question"
 - Be concise and accurate
 - Cite the document and page number when providing information
 - If multiple documents mention the same information, cite all of them
 
 Answer:`;
+
+    return prompt;
   }
 
   /**
