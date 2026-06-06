@@ -15,6 +15,7 @@ import { AuthModule } from './features/auth/auth.module';
 import { UsersModule } from './features/users/users.module';
 import { PdfToolkitModule } from './features/pdf-toolkit/pdf-toolkit.module';
 import { ResumeAnalyzerModule } from './features/resume-analyzer/resume-analyzer.module';
+import { AiDetectorModule } from './features/ai-detector/ai-detector.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ResumeAnalyzerModule } from './features/resume-analyzer/resume-analyzer
     UsersModule,
     PdfToolkitModule,
     ResumeAnalyzerModule,
+    AiDetectorModule,
   ],
 })
 export class AppModule {}

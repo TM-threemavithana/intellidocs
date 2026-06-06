@@ -315,3 +315,14 @@ export const resumeAnalyzerApi = {
     return response.data;
   },
 };
+
+// AI Content Detector API
+export const aiDetectorApi = {
+  /**
+   * Analyze text for AI content indicators
+   */
+  analyze: async (text: string) => {
+    const response = await api.post('/ai-detector/analyze', { text });
+    return response.data;
+  },
+};
