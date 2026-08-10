@@ -326,3 +326,22 @@ export const aiDetectorApi = {
     return response.data;
   },
 };
+
+// RAGAS Evaluation API
+export const ragEvalApi = {
+  /**
+   * Trigger RAGAS evaluation run
+   */
+  evaluate: async () => {
+    const response = await api.post('/rag/evaluate');
+    return response.data;
+  },
+
+  /**
+   * Get previous RAGAS evaluation benchmarks history
+   */
+  getHistory: async () => {
+    const response = await api.get('/rag/evaluate/results');
+    return response.data;
+  },
+};

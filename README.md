@@ -1,435 +1,129 @@
-# IntelliDocs AI - Document Intelligence Platform
+<h1 align="center">🧠 IntelliDocs AI</h1>
 
-**Status**: FYP v4.0 Implementation (Week 1: Environment Setup)
-**Timeline**: 20 Weeks
-**Version**: Development
+<p align="center">
+  <strong>An AI-powered Document Intelligence Platform with advanced RAG (Retrieval-Augmented Generation) capabilities.</strong>
+</p>
 
-## Overview
+<p align="center">
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" />
+  <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white" />
+</p>
 
-IntelliDocs AI is an AI-powered document intelligence platform that enables users to:
-- 🔍 Extract text from scanned PDFs using multi-language OCR (English, Sinhala, Tamil, Chinese, Japanese)
-- 💬 Chat with documents using RAG (Retrieval-Augmented Generation) with cited page references
-- 📄 Search across multiple documents simultaneously with comparative answers
-- 🎯 Analyze resumes with ATS scoring
-- 🛡️ Detect AI-generated content probabilistically
+---
 
-## Project Structure
+## 🚀 Overview
 
+**IntelliDocs AI** transforms static documents into interactive knowledge bases. By leveraging LLMs and vector embeddings, it allows users to "chat" with their documents, extract key insights, and automate information retrieval across massive datasets.
+
+### ✨ Key Features
+
+- **Hybrid RAG Pipeline:** Combines semantic vector search with keyword matching for highly accurate document retrieval.
+- **Multi-Format Support:** Ingests PDF, DOCX, TXT, and CSV files seamlessly.
+- **Contextual Memory:** Maintains conversation history for multi-turn reasoning about document contents.
+- **Containerized Architecture:** Fully dockerized for isolated, reproducible deployments.
+
+---
+
+## 📐 Architecture
+
+IntelliDocs AI leverages a robust, containerized architecture to process documents and orchestrate the RAG pipeline.
+- **Vector Database**: **ChromaDB** is used to store and query document embeddings.
+- **LLM Orchestration**: **Ollama** runs locally (defaulting to Llama 2), with optional fallbacks to Groq or Google Gemini.
+- **Storage**: **MinIO** handles S3-compatible object storage for uploaded documents.
+- **Core DB & Cache**: **PostgreSQL** and **Redis**.
+- **Frontend (`/frontend`):** A modern, responsive React interface.
+- **Backend (`/backend`):** A Node.js/TypeScript service.
+
+```mermaid
+graph LR
+    User([User]) -->|Uploads Document| API(Backend API)
+    User -->|Asks Question| API
+    
+    API -->|Stores File| MinIO[(MinIO Storage)]
+    API -->|Extracts Text & Chunks| API
+    
+    API -->|Generates Embeddings| LLM{Ollama LLM}
+    API -->|Stores Embeddings| Chroma[(ChromaDB Vector DB)]
+    
+    API -->|Retrieves Context| Chroma
+    API -->|Sends Context + Query| LLM
+    LLM -->|Returns Answer| API
+    API -->|Displays to| User
 ```
-intellidocs/
-├── backend/              # NestJS API server
-├── frontend/             # Next.js UI
-├── docker/               # Docker configurations
-├── docs/                 # Documentation
-├── docker-compose.yml    # All services orchestration
-├── .env.example          # Environment variables template
-└── README.md             # This file
-```
 
-## Quick Start (Week 1: Environment Setup)
+---
+
+## 🛠️ Quick Start
 
 ### Prerequisites
-- Docker & Docker Compose installed
-- Node.js 18+ (for local development)
-- Git
-
-### 1. Start Infrastructure Services
-
-```bash
-# Clone and navigate to project
-cd c:\7 Sem\intellidocs
-
-# Copy environment template
-cp .env.example .env
-
-# Start all services (PostgreSQL, Redis, MinIO, Ollama)
-docker-compose up -d
-
-# Verify services are running
-docker-compose ps
-```
-
-**What's Running:**
-- **PostgreSQL** (port 5432) - User data, documents, metadata
-- **Redis** (port 6379) - Job queue, session cache
-- **MinIO** (ports 9000/9001) - Document storage (S3-compatible)
-- **Ollama** (port 11434) - Local LLM (Llama 2 model)
-
-### 2. Initialize PostgreSQL
-
-```bash
-# Connect to PostgreSQL
-docker exec -it intellidocs-postgres psql -U intellidocs -d intellidocs_db
-
-# Create initial schema (detailed setup in backend README)
-```
-
-### 3. Setup Backend (NestJS API)
-
-```bash
-cd backend
-
-# Install dependencies
-npm install
-
-# Setup database with Prisma
-npm run prisma:migrate
-
-# Seed initial data (optional)
-npm run seed
-
-# Start development server
-npm run start:dev
-```
-
-Backend runs on: http://localhost:3000
-
-### 4. Setup Frontend (Next.js UI)
-
-```bash
-cd ../frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-Frontend runs on: http://localhost:3001
-
----
-
-## Architecture Overview
-
-### Technology Stack (100% FREE)
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **Frontend** | Next.js 14 + Tailwind + TypeScript | Web UI |
-| **Backend** | NestJS + GraphQL + REST | API Server |
-| **Database** | PostgreSQL | Persistent data |
-| **Cache/Queue** | Redis + Bull | Job processing |
-| **File Storage** | MinIO | Document storage |
-| **OCR** | Tesseract.js | Text extraction |
-| **LLM (Local)** | Ollama + Llama 2 | Local AI |
-| **LLM (Cloud)** | Groq API (free tier) | Fallback AI |
-| **Embeddings** | nomic-embed-text | Vector generation |
-| **Vector DB** | ChromaDB | Semantic search |
-| **RAG Framework** | LangChain.js | Retrieval pipeline |
-
-### System Architecture
-
-```
-┌─────────────────────────────────┐
-│   Browser / Mobile (Next.js)    │
-│   - File Upload, Chat, PDF View │
-└────────────────┬────────────────┘
-                 │
-                 │ REST/GraphQL
-                 │
-┌────────────────▼────────────────┐
-│     NestJS API Server           │
-│  - Auth, File Handling, Jobs    │
-└────┬────────────┬───────────────┘
-     │            │
-     │            ├──────────────────┐
-┌────▼───┐   ┌────▼──┐   ┌─────────▼───┐
-│PostgreSQL  Redis   MinIO  │ Bull Queue │
-│(Data)    (Cache) (Files) │(OCR/Index) │
-└──────────────────────────────────────┘
-
-┌─────────────────────────────────┐
-│    AI / RAG Layer               │
-│  - Ollama + Groq API            │
-│  - LangChain + ChromaDB         │
-│  - Tesseract.js (OCR)           │
-└─────────────────────────────────┘
-```
-
----
-
-## Implementation Timeline
-
-### Week 1: Environment Setup ✅ (IN PROGRESS)
-- [x] Project initialization
-- [x] Docker Compose setup
-- [x] Database schemas
-- [ ] Ollama model download
-- [ ] Redis + MinIO initialization
-
-### Week 2-3: OCR Pipeline
-- Tesseract.js multi-language support
-- CER/WER evaluation metrics
-- 5-language benchmarking
-
-### Week 4-7: RAG Single-Document Chat
-- Document upload & chunking
-- Vector embedding generation
-- Semantic search & retrieval
-- LLM prompt + answer generation
-- Page-level citation
-
-### Week 8-10: Cross-Document Search
-- Document collections
-- Multi-doc simultaneous search
-- Comparative answer generation
-
-### Week 11-12: Secondary Features
-- PDF Toolkit (merge, split, convert)
-- Resume Analyzer (ATS scoring)
-
-### Week 13-18: Optional Features & Testing
-- AI Content Detector (perplexity + burstiness)
-- Integration testing
-- Load testing
-- RAGAS evaluation
-
-### Week 19: Deployment & Demo
-- Production deployment (Railway/Render)
-- Demo video recording
-
-### Week 20: Report & Viva Prep
-- FYP report writing
-- Viva presentation slides
-
----
-
-## Service Ports & URLs
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **PostgreSQL** | localhost:5432 | user: `intellidocs`, pass: `intellidocs_dev_password` |
-| **Redis CLI** | localhost:6379 | `redis-cli` |
-| **MinIO API** | http://localhost:9000 | user: `minioadmin`, pass: `minioadmin_password` |
-| **MinIO Console** | http://localhost:9001 | user: `minioadmin`, pass: `minioadmin_password` |
-| **Ollama API** | http://localhost:11434 | No auth |
-| **Backend API** | http://localhost:3000 | See JWT auth |
-| **Frontend** | http://localhost:3001 | None |
-
----
-
-## Development Commands
-
-### Docker Management
-```bash
-# Start all services
-docker-compose up -d
-
-# Stop all services
-docker-compose down
-
-# View logs
-docker-compose logs -f [service-name]
-
-# Restart specific service
-docker-compose restart [service-name]
-
-# Remove all volumes (WARNING: deletes data)
-docker-compose down -v
-```
-
-### Backend Development
-```bash
-cd backend
-
-# Install dependencies
-npm install
-
-# Run migrations
-npm run prisma:migrate
-
-# Start dev server with hot reload
-npm run start:dev
-
-# Run tests
-npm run test
-
-# Run linter
-npm run lint
-
-# Check types
-npm run type-check
-```
-
-### Frontend Development
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start dev server
-npm run dev
-
-# Build for production
-npm run build
-
-# Run tests
-npm run test
-
-# Lint
-npm run lint
-```
-
----
-
-## Database Schema Overview
-
-### Key Tables
-- **users** - Authentication & user profiles
-- **documents** - PDF metadata, OCR tracking
-- **document_collections** - Groups of documents for cross-doc search
-- **chats** - Conversations with Q&A history
-- **embeddings** - Vector store metadata
-- **ocr_results** - OCR accuracy metrics
-- **detection_results** - AI content detection results
-
-See `backend/prisma/schema.prisma` for full schema.
-
----
-
-## Environment Variables
-
-All environment variables are defined in `.env.example`. Copy to `.env` and customize:
-
+Before you begin, ensure you have the following installed on your system:
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+
+### 1. Environment Setup
+Copy the example environment file and add your LLM API keys:
 ```bash
 cp .env.example .env
+# Edit .env with your credentials
 ```
 
-**Key Variables:**
-- `DATABASE_URL` - PostgreSQL connection
-- `REDIS_URL` - Redis connection
-- `OLLAMA_BASE_URL` - Local LLM endpoint
-- `GROQ_API_KEY` - Optional cloud LLM backup
-- `JWT_SECRET` - Authentication key
-- `MAX_FILE_SIZE` - Upload limit (default: 50MB)
-
----
-
-## Evaluation Metrics
-
-### OCR Pipeline
-- **CER** (Character Error Rate) - Target: < 5% for English
-- **WER** (Word Error Rate) - Target: < 8% for English
-- **Processing Speed** - Target: < 3 seconds per page
-
-### RAG System
-- **Answer Relevance** - Target: 4.0/5 (Likert scale)
-- **Retrieval Accuracy** - Target: > 85%
-- **Faithfulness** - Target: > 90% (RAGAS)
-- **Citation Accuracy** - Target: > 95%
-- **Latency** - Target: < 5 seconds (local), < 2 seconds (Groq)
-
-### AI Content Detector
-- **F1 Score** - Target: > 0.78
-- **Precision** - Target: > 80%
-- **Recall** - Target: > 75%
-
----
-
-## Ethical Considerations
-
-✅ **Privacy**
-- Per-user data isolation
-- Bcrypt password hashing (cost factor 12)
-- Cascade deletion of documents & embeddings
-- No third-party data sharing
-
-✅ **Transparency**
-- AI detector outputs are probabilistic (not definitive)
-- Clear limitations documented
-- Honest accuracy reporting per language
-
-✅ **Fairness**
-- Multi-language support (acknowledges limits)
-- Documented biases in LLM-based features
-
----
-
-## Troubleshooting
-
-### Docker Issues
-
-**Q: Services won't start**
+### 2. Launch Platform
+The fastest way to get started is using Docker Compose:
 ```bash
-# Check Docker daemon
-docker --version
-
-# Rebuild from scratch
-docker-compose down -v
-docker-compose up -d --build
+docker-compose up --build -d
 ```
 
-**Q: Port already in use**
-```bash
-# Check what's using the port (e.g., 5432)
-netstat -ano | findstr :5432
+- **Frontend UI:** `http://localhost:3000`
+- **Backend API:** `http://localhost:8080`
 
-# Change port in docker-compose.yml
-```
+---
 
-### Database Issues
+## 💻 Usage
 
-**Q: Can't connect to PostgreSQL**
-```bash
-# Check if container is running
-docker-compose ps
+Once the platform is running:
+1. Open the **Frontend UI** in your browser.
+2. **Upload a Document** (PDF, TXT, DOCX, or CSV) via the drag-and-drop interface.
+3. Wait a few seconds for the document to be processed and vectorized.
+4. **Start Chatting**: Use the chat input at the bottom of the screen to ask questions about your document!
 
-# View logs
-docker-compose logs postgres
-
-# Force restart
-docker-compose restart postgres
-```
-
-### Ollama Issues
-
-**Q: Model won't download**
-```bash
-# Pull model manually
-docker exec -it intellidocs-ollama ollama pull llama2
-
-# Verify model is available
-curl http://localhost:11434/api/tags
+```text
++-------------------------------------------------------------+
+| 🧠 IntelliDocs AI                                  [Logout] |
+|-------------------------------------------------------------|
+|                                                             |
+|  [ Upload Document (PDF, TXT, DOCX, CSV) 📁 ]               |
+|                                                             |
+|  Current Document: quarterly_report.pdf (Processed ✓)       |
+|                                                             |
+|  ---------------------------------------------------------  |
+|  | User: What were the key revenue drivers?              |  |
+|  |                                                       |  |
+|  | AI: Based on the document, the key revenue drivers    |  |
+|  | were Q3 enterprise sales and the new cloud API...     |  |
+|  ---------------------------------------------------------  |
+|                                                             |
+|  [ Ask a question about your document...             ] [->] |
++-------------------------------------------------------------+
 ```
 
 ---
 
-## Resources
-
-📚 **Documentation**
-- [NestJS Docs](https://docs.nestjs.com)
-- [Next.js Docs](https://nextjs.org/docs)
-- [Prisma ORM](https://www.prisma.io/docs)
-- [LangChain.js](https://js.langchain.com)
-- [ChromaDB](https://docs.trychroma.com)
-- [Tesseract.js](https://tesseract.projectnaptha.com)
-
-🔗 **APIs**
-- [Groq API](https://console.groq.com)
-- [Google Gemini API](https://ai.google.dev)
-
-📖 **Academic References**
-- Lewis et al. (2020) - RAG paper
-- Gao et al. (2023) - RAG survey
-- Guo et al. (2023) - HC3 dataset
+## 📈 Current Status
+Check [CURRENT_STATUS.md](CURRENT_STATUS.md) for the latest development updates, known limitations, and immediate next steps in the sprint.
 
 ---
 
-## Support & Questions
-
-For questions or issues:
-1. Check project docs in `/docs`
-2. Review service logs: `docker-compose logs`
-3. Consult proposal document: Section numbers in parentheses reference it
+## 🤝 Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ---
 
-## License
-
-This is a Final Year Project (FYP) - Check with your institution for licensing requirements.
-
-**Created**: May 2026
-**Version**: v0.1 (Development)
-**Status**: Active Implementation
+## 📄 License
+This project is licensed under the MIT License - see the LICENSE file for details.

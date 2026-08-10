@@ -9,6 +9,8 @@ import { StreamingService } from './streaming.service';
 import { CitationsService } from './citations.service';
 import { DatabaseModule } from '../../core/database/database.module';
 import { EmbeddingsModule } from '../embeddings/embeddings.module';
+import { RagEvalService } from './rag-eval.service';
+import { RagEvalController } from './rag-eval.controller';
 
 @Module({
   imports: [
@@ -16,13 +18,14 @@ import { EmbeddingsModule } from '../embeddings/embeddings.module';
     DatabaseModule,
     EmbeddingsModule,
   ],
-  controllers: [ChatController, ConversationsController],
+  controllers: [ChatController, ConversationsController, RagEvalController],
   providers: [
     RAGService,
     ChatService,
     ConversationsService,
     StreamingService,
     CitationsService,
+    RagEvalService,
   ],
   exports: [
     RAGService,
@@ -30,6 +33,7 @@ import { EmbeddingsModule } from '../embeddings/embeddings.module';
     ConversationsService,
     StreamingService,
     CitationsService,
+    RagEvalService,
   ],
 })
 export class RAGModule {}
