@@ -18,7 +18,7 @@ export class ResumeAnalyzerController {
    * POST /resume-analyzer/analyze
    */
   @Post('analyze')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: Number(process.env.MAX_FILE_SIZE || 52428800) } }))
   async analyzeResume(
     @UploadedFile() file: Express.Multer.File,
     @Body('jobDescription') jobDescription: string,

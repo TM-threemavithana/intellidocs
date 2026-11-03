@@ -15,13 +15,13 @@ import { ChatService } from './chat.service';
 import { StreamingService } from './streaming.service';
 import { CitationsService } from './citations.service';
 import { Observable, interval, map } from 'rxjs';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 class AskQuestionDto {
   question: string;
   documentId?: string;
   collectionId?: string;
   conversationId?: string; // For multi-turn conversations
-  userId?: string; // In production, get from auth token
 }
 
 @Controller('chat')
@@ -37,9 +37,8 @@ export class ChatController {
    */
   @Post('ask')
   @HttpCode(HttpStatus.OK)
-  async ask(@Body() dto: AskQuestionDto) {
-    // In production, get userId from JWT token
-    const userId = dto.userId || 'default-user';
+  async ask(@Body() dto: AskQuestionDto, @CurrentUser() user: { id: string }) {
+    const userId = user.id;
 
     const response = await this.chatService.ask(
       userId,
@@ -60,16 +59,15 @@ export class ChatController {
    */
   @Get('history')
   async getHistory(
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    // In production, get userId from JWT token
-    const user = userId || 'default-user';
+    const userId = user.id;
     const limitNum = limit ? parseInt(limit) : 50;
     const offsetNum = offset ? parseInt(offset) : 0;
 
-    const history = await this.chatService.getHistory(user, limitNum, offsetNum);
+    const history = await this.chatService.getHistory(userId, limitNum, offsetNum);
 
     return {
       success: true,
@@ -88,14 +86,14 @@ export class ChatController {
   @Get('history/document/:documentId')
   async getDocumentHistory(
     @Param('documentId') documentId: string,
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
   ) {
-    const user = userId || 'default-user';
+    const userId = user.id;
     const limitNum = limit ? parseInt(limit) : 50;
 
     const history = await this.chatService.getDocumentHistory(
-      user,
+      userId,
       documentId,
       limitNum,
     );
@@ -112,10 +110,9 @@ export class ChatController {
   @Delete(':chatId')
   async deleteMessage(
     @Param('chatId') chatId: string,
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
   ) {
-    const user = userId || 'default-user';
-    await this.chatService.deleteMessage(user, chatId);
+    await this.chatService.deleteMessage(user.id, chatId);
 
     return {
       success: true,
@@ -127,9 +124,8 @@ export class ChatController {
    * Clear all chat history
    */
   @Delete('history/clear')
-  async clearHistory(@Query('userId') userId?: string) {
-    const user = userId || 'default-user';
-    const count = await this.chatService.clearHistory(user);
+  async clearHistory(@CurrentUser() user: { id: string }) {
+    const count = await this.chatService.clearHistory(user.id);
 
     return {
       success: true,
@@ -142,9 +138,8 @@ export class ChatController {
    * Get chat statistics
    */
   @Get('stats')
-  async getStats(@Query('userId') userId?: string) {
-    const user = userId || 'default-user';
-    const stats = await this.chatService.getStats(user);
+  async getStats(@CurrentUser() user: { id: string }) {
+    const stats = await this.chatService.getStats(user.id);
 
     return {
       success: true,
@@ -159,11 +154,10 @@ export class ChatController {
   @Get('stream')
   @Sse()
   streamResponse(
+    @CurrentUser() user: { id: string },
     @Query('question') question: string,
     @Query('documentId') documentId?: string,
-    @Query('userId') userId?: string,
   ): Observable<MessageEvent> {
-    const user = userId || 'default-user';
 
     // This is a simplified streaming endpoint
     // In production, you'd want to:
@@ -197,12 +191,12 @@ export class ChatController {
    */
   @Get('citations/stats')
   async getCitationStats(
+    @CurrentUser() user: { id: string },
     @Query('documentId') documentId?: string,
-    @Query('userId') userId?: string,
   ) {
     const stats = await this.citationsService.getCitationStatistics(
       documentId,
-      userId,
+      user.id,
     );
 
     return {

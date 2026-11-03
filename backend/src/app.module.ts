@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { DatabaseModule } from './core/database/database.module';
@@ -16,6 +17,7 @@ import { UsersModule } from './features/users/users.module';
 import { PdfToolkitModule } from './features/pdf-toolkit/pdf-toolkit.module';
 import { ResumeAnalyzerModule } from './features/resume-analyzer/resume-analyzer.module';
 import { AiDetectorModule } from './features/ai-detector/ai-detector.module';
+import { JwtAuthGuard } from './features/auth/guards/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -45,5 +47,6 @@ import { AiDetectorModule } from './features/ai-detector/ai-detector.module';
     ResumeAnalyzerModule,
     AiDetectorModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
 export class AppModule {}

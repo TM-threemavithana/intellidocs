@@ -14,9 +14,11 @@ import { DatabaseModule } from '../../core/database/database.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) throw new Error('JWT_SECRET must be configured');
         const expiresIn = configService.get<string>('JWT_EXPIRES_IN') || '15m';
         return {
-          secret: configService.get<string>('JWT_SECRET') || 'your-secret-key-change-in-production',
+          secret,
           signOptions: {
             expiresIn: expiresIn as any, // Type assertion to bypass strict type checking
           },

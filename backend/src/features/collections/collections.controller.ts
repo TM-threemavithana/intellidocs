@@ -11,6 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { CollectionsService } from './collections.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('collections')
 export class CollectionsController {
@@ -23,10 +24,10 @@ export class CollectionsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createCollection(
-    @Body() body: { userId: string; name: string; description?: string },
+    @Body() body: { name: string; description?: string }, @CurrentUser() user: { id: string },
   ) {
     const collection = await this.collectionsService.createCollection(
-      body.userId,
+      user.id,
       body.name,
       body.description,
     );
@@ -44,12 +45,12 @@ export class CollectionsController {
    */
   @Get()
   async getUserCollections(
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
     const result = await this.collectionsService.getUserCollections(
-      userId,
+      user.id,
       limit ? parseInt(limit) : 50,
       offset ? parseInt(offset) : 0,
     );
@@ -70,8 +71,8 @@ export class CollectionsController {
    * GET /collections/:id?userId=xxx
    */
   @Get(':id')
-  async getCollection(@Param('id') id: string, @Query('userId') userId: string) {
-    const collection = await this.collectionsService.getCollectionById(id, userId);
+  async getCollection(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    const collection = await this.collectionsService.getCollectionById(id, user.id);
 
     return {
       success: true,
@@ -86,11 +87,11 @@ export class CollectionsController {
   @Put(':id')
   async updateCollection(
     @Param('id') id: string,
-    @Body() body: { userId: string; name?: string; description?: string },
+    @Body() body: { name?: string; description?: string }, @CurrentUser() user: { id: string },
   ) {
     const collection = await this.collectionsService.updateCollection(
       id,
-      body.userId,
+      user.id,
       body.name,
       body.description,
     );
@@ -107,8 +108,8 @@ export class CollectionsController {
    * DELETE /collections/:id?userId=xxx
    */
   @Delete(':id')
-  async deleteCollection(@Param('id') id: string, @Query('userId') userId: string) {
-    const result = await this.collectionsService.deleteCollection(id, userId);
+  async deleteCollection(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    const result = await this.collectionsService.deleteCollection(id, user.id);
 
     return {
       success: true,
@@ -123,11 +124,11 @@ export class CollectionsController {
   @Post(':id/documents')
   async addDocuments(
     @Param('id') id: string,
-    @Body() body: { userId: string; documentIds: string[] },
+    @Body() body: { documentIds: string[] }, @CurrentUser() user: { id: string },
   ) {
     const result = await this.collectionsService.addDocumentsToCollection(
       id,
-      body.userId,
+      user.id,
       body.documentIds,
     );
 
@@ -149,12 +150,12 @@ export class CollectionsController {
   async removeDocument(
     @Param('id') id: string,
     @Param('documentId') documentId: string,
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
   ) {
     const result = await this.collectionsService.removeDocumentFromCollection(
       id,
       documentId,
-      userId,
+      user.id,
     );
 
     return {
@@ -170,9 +171,9 @@ export class CollectionsController {
   @Get(':id/documents')
   async getCollectionDocuments(
     @Param('id') id: string,
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
   ) {
-    const documents = await this.collectionsService.getCollectionDocuments(id, userId);
+    const documents = await this.collectionsService.getCollectionDocuments(id, user.id);
 
     return {
       success: true,
@@ -186,8 +187,8 @@ export class CollectionsController {
    * GET /collections/:id/stats?userId=xxx
    */
   @Get(':id/stats')
-  async getCollectionStats(@Param('id') id: string, @Query('userId') userId: string) {
-    const stats = await this.collectionsService.getCollectionStats(id, userId);
+  async getCollectionStats(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    const stats = await this.collectionsService.getCollectionStats(id, user.id);
 
     return {
       success: true,

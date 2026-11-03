@@ -21,7 +21,7 @@ export class PdfToolkitController {
    * POST /pdf-toolkit/merge
    */
   @Post('merge')
-  @UseInterceptors(FilesInterceptor('files'))
+  @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: Number(process.env.MAX_FILE_SIZE || 52428800), files: 10 } }))
   async mergePdfs(
     @UploadedFiles() files: Express.Multer.File[],
     @Res() res: Response,
@@ -54,7 +54,7 @@ export class PdfToolkitController {
    * POST /pdf-toolkit/split
    */
   @Post('split')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: Number(process.env.MAX_FILE_SIZE || 52428800) } }))
   async splitPdf(
     @UploadedFile() file: Express.Multer.File,
     @Body('ranges') rangesStr: string,
@@ -108,7 +108,7 @@ export class PdfToolkitController {
    * POST /pdf-toolkit/convert
    */
   @Post('convert')
-  @UseInterceptors(FilesInterceptor('files'))
+  @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: Number(process.env.MAX_FILE_SIZE || 52428800), files: 10 } }))
   async convertImagesToPdf(
     @UploadedFiles() files: Express.Multer.File[],
     @Res() res: Response,

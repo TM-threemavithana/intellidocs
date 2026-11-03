@@ -18,12 +18,12 @@ export class EmbeddingsService {
   /**
    * Generate embeddings for a document
    */
-  async generateEmbeddingsForDocument(documentId: string): Promise<void> {
+  async generateEmbeddingsForDocument(documentId: string, userId: string): Promise<void> {
     this.logger.log(`Generating embeddings for document: ${documentId}`);
 
     // Get document
     const document = await this.prisma.document.findUnique({
-      where: { id: documentId },
+      where: { id: documentId, userId, isDeleted: false },
     });
 
     if (!document) {
@@ -127,7 +127,7 @@ export class EmbeddingsService {
   async search(
     query: string,
     topK: number = 5,
-    documentIds?: string[],
+    documentIds?: string[], userId?: string,
   ) {
     this.logger.log(`Searching for: "${query.substring(0, 50)}..."`);
 
@@ -135,9 +135,11 @@ export class EmbeddingsService {
     const queryEmbedding = await this.generateEmbedding(query);
 
     // Build filter
-    const filter = documentIds && documentIds.length > 0
-      ? { documentId: { $in: documentIds } }
-      : undefined;
+    const permittedDocumentIds = await this.prisma.document.findMany({
+      where: { userId, isDeleted: false, ...(documentIds?.length ? { id: { in: documentIds } } : {}) },
+      select: { id: true },
+    });
+    const filter = { documentId: { $in: permittedDocumentIds.map((document) => document.id) } };
 
     // Search ChromaDB
     const results = await this.chromaService.search(queryEmbedding, topK, filter);
@@ -149,9 +151,9 @@ export class EmbeddingsService {
   /**
    * Get embeddings stats
    */
-  async getStats() {
+  async getStats(userId: string) {
     const chromaStats = await this.chromaService.getStats();
-    const dbCount = await this.prisma.embedding.count();
+    const dbCount = await this.prisma.embedding.count({ where: { document: { userId, isDeleted: false } } });
 
     return {
       chromadb: chromaStats,
@@ -162,7 +164,9 @@ export class EmbeddingsService {
   /**
    * Delete embeddings for a document
    */
-  async deleteEmbeddings(documentId: string): Promise<void> {
+  async deleteEmbeddings(documentId: string, userId: string): Promise<void> {
+    const document = await this.prisma.document.findFirst({ where: { id: documentId, userId, isDeleted: false } });
+    if (!document) throw new NotFoundException('Document not found');
     await this.chromaService.deleteByDocumentId(documentId);
     await this.prisma.embedding.deleteMany({ where: { documentId } });
     this.logger.log(`Deleted embeddings for document: ${documentId}`);

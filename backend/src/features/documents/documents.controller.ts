@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('documents')
 export class DocumentsController {
@@ -22,8 +23,8 @@ export class DocumentsController {
    * POST /documents/upload
    */
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadDocument(@UploadedFile() file: Express.Multer.File) {
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: Number(process.env.MAX_FILE_SIZE || 52428800) } }))
+  async uploadDocument(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: { id: string }) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
@@ -32,9 +33,7 @@ export class DocumentsController {
       throw new BadRequestException('Only PDF files are allowed');
     }
 
-    // TODO: Get userId from JWT token
-    // For now, using a test user ID
-    const userId = 'test-user-id';
+    const userId = user.id;
 
     try {
       const document = await this.documentsService.uploadDocument(
@@ -66,10 +65,8 @@ export class DocumentsController {
    * GET /documents
    */
   @Get()
-  async getAllDocuments() {
-    // TODO: Get userId from JWT token
-    // For now, using a test user ID
-    const userId = 'default-user';
+  async getAllDocuments(@CurrentUser() user: { id: string }) {
+    const userId = user.id;
 
     try {
       const documents = await this.documentsService.getAllDocuments(userId);
@@ -85,10 +82,9 @@ export class DocumentsController {
    * GET /documents/:id
    */
   @Get(':id')
-  async getDocument(@Param('id') id: string) {
+  async getDocument(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     const document = await this.documentsService.getDocument(id);
-    
-    if (!document) {
+    if (!document || document.userId !== user.id) {
       throw new BadRequestException('Document not found');
     }
 
@@ -103,10 +99,10 @@ export class DocumentsController {
    * GET /documents/:id/ocr
    */
   @Get(':id/ocr')
-  async getOCRResults(@Param('id') id: string) {
+  async getOCRResults(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     const document = await this.documentsService.getDocument(id);
     
-    if (!document) {
+    if (!document || document.userId !== user.id) {
       throw new BadRequestException('Document not found');
     }
 
@@ -136,10 +132,10 @@ export class DocumentsController {
    * GET /documents/:id/ocr-status
    */
   @Get(':id/ocr-status')
-  async getOCRJobStatus(@Param('id') id: string) {
+  async getOCRJobStatus(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     const document = await this.documentsService.getDocument(id);
     
-    if (!document) {
+    if (!document || document.userId !== user.id) {
       throw new BadRequestException('Document not found');
     }
 

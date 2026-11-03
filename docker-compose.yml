@@ -7,7 +7,7 @@ services:
     container_name: intellidocs-postgres
     environment:
       POSTGRES_USER: intellidocs
-      POSTGRES_PASSWORD: intellidocs_dev_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: intellidocs_db
       POSTGRES_PORT: 5432
     ports:
@@ -43,8 +43,8 @@ services:
     image: minio/minio:latest
     container_name: intellidocs-minio
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin_password
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     ports:
       - "9000:9000"      # API port
       - "9001:9001"      # Console port
@@ -107,40 +107,41 @@ services:
       - "3000:3000"
     environment:
       # Database - use service name instead of localhost
-      DATABASE_URL: postgresql://intellidocs@postgres:5432/intellidocs_db?schema=public
-      
+      DATABASE_URL: postgresql://intellidocs:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/intellidocs_db?schema=public
+
       # Redis - use service name
       REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      
+
       # MinIO - use service name
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin_password
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET_NAME: intellidocs-documents
-      
+
       # Ollama - use service name
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: llama2
-      
+
       # ChromaDB - use service name
       CHROMADB_URL: http://chromadb:8000
       CHROMADB_COLLECTION: intellidocs_embeddings
-      
+
       # Application
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 3000
       API_BASE_URL: http://localhost:3000
       FRONTEND_URL: http://localhost:3001
-      
+
       # JWT
-      JWT_SECRET: your_super_secret_jwt_key_change_this_in_production
-      JWT_EXPIRATION: 7d
-      
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
+      JWT_EXPIRES_IN: 15m
+
       # Logging
-      LOG_LEVEL: debug
-      
+      LOG_LEVEL: info
+
       # File Upload
       MAX_FILE_SIZE: 52428800
       ALLOWED_MIME_TYPES: application/pdf,image/png,image/jpeg
@@ -151,13 +152,9 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
-      - /app/dist
     networks:
       - intellidocs-network
-    command: npm run start:dev
+    command: npm run start:prod
 
 volumes:
   postgres_data:

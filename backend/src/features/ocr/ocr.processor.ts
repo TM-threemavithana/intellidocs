@@ -41,7 +41,7 @@ export class OCRProcessor {
       this.logger.log(`[Job ${job.id}] Found document: ${document.fileName}`);
 
       // 2. Download file from MinIO
-      const storageKey = document.storageUrl.replace('s3://intellidocs-documents/', '');
+      const storageKey = document.storageUrl.replace(/^s3:\/\/[^/]+\//, '');
       const fileBuffer = await this.minio.downloadFile(storageKey);
 
       this.logger.log(`[Job ${job.id}] Downloaded file from MinIO (${fileBuffer.length} bytes)`);

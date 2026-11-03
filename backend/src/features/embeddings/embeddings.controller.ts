@@ -10,6 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { EmbeddingsService } from './embeddings.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('embeddings')
 export class EmbeddingsController {
@@ -21,8 +22,8 @@ export class EmbeddingsController {
    */
   @Post('generate/:documentId')
   @HttpCode(HttpStatus.ACCEPTED)
-  async generateEmbeddings(@Param('documentId') documentId: string) {
-    await this.embeddingsService.generateEmbeddingsForDocument(documentId);
+  async generateEmbeddings(@Param('documentId') documentId: string, @CurrentUser() user: { id: string }) {
+    await this.embeddingsService.generateEmbeddingsForDocument(documentId, user.id);
     return {
       message: 'Embeddings generated successfully',
       documentId,
@@ -35,10 +36,10 @@ export class EmbeddingsController {
    */
   @Post('search')
   async search(
-    @Body() body: { query: string; topK?: number; documentIds?: string[] },
+    @Body() body: { query: string; topK?: number; documentIds?: string[] }, @CurrentUser() user: { id: string },
   ) {
     const { query, topK = 5, documentIds } = body;
-    const results = await this.embeddingsService.search(query, topK, documentIds);
+    const results = await this.embeddingsService.search(query, topK, documentIds, user.id);
     
     return {
       query,
@@ -55,8 +56,8 @@ export class EmbeddingsController {
    * GET /embeddings/stats
    */
   @Get('stats')
-  async getStats() {
-    return this.embeddingsService.getStats();
+  async getStats(@CurrentUser() user: { id: string }) {
+    return this.embeddingsService.getStats(user.id);
   }
 
   /**
@@ -64,8 +65,8 @@ export class EmbeddingsController {
    * DELETE /embeddings/:documentId
    */
   @Delete(':documentId')
-  async deleteEmbeddings(@Param('documentId') documentId: string) {
-    await this.embeddingsService.deleteEmbeddings(documentId);
+  async deleteEmbeddings(@Param('documentId') documentId: string, @CurrentUser() user: { id: string }) {
+    await this.embeddingsService.deleteEmbeddings(documentId, user.id);
     return {
       message: 'Embeddings deleted successfully',
       documentId,

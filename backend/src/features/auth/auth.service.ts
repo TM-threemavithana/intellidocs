@@ -8,6 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../../core/database/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -110,7 +111,7 @@ export class AuthService {
     try {
       // Verify refresh token
       const payload = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'your-refresh-secret-key',
+        secret: this.getRefreshSecret(),
       });
 
       // Get user
@@ -151,6 +152,7 @@ export class AuthService {
 
     // Generate reset token
     const resetToken = this.generateRandomToken();
+    const tokenHash = this.hashResetToken(resetToken);
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours expiration
 
@@ -158,16 +160,14 @@ export class AuthService {
     await this.prisma.passwordReset.create({
       data: {
         userId: user.id,
-        token: resetToken,
+        token: tokenHash,
         expiresAt,
       },
     });
 
     this.logger.log(`Password reset requested for: ${email}`);
 
-    // TODO: Send email with reset token
-    // For now, we'll log it (in production, send via email)
-    this.logger.log(`Password reset token: ${resetToken}`);
+    // Deliver the raw token through a configured email provider. Never log it.
 
     return {
       message: 'If the email exists, a password reset link will be sent',
@@ -182,7 +182,7 @@ export class AuthService {
 
     // Find valid reset token
     const resetRecord = await this.prisma.passwordReset.findUnique({
-      where: { token },
+      where: { token: this.hashResetToken(token) },
       include: { user: true },
     });
 
@@ -231,6 +231,7 @@ export class AuthService {
         email: true,
         name: true,
         role: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -238,6 +239,9 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('User not found');
+    }
+    if (!user.isActive) {
+      throw new UnauthorizedException('User is inactive');
     }
 
     return user;
@@ -286,7 +290,7 @@ export class AuthService {
     };
 
     return this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'your-refresh-secret-key',
+      secret: this.getRefreshSecret(),
       expiresIn: '7d', // 7 days
     });
   }
@@ -310,10 +314,16 @@ export class AuthService {
    * Generate random token for password reset
    */
   private generateRandomToken(): string {
-    return (
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15) +
-      Date.now().toString(36)
-    );
+    return randomBytes(32).toString('hex');
+  }
+
+  private hashResetToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private getRefreshSecret(): string {
+    const secret = this.configService.get<string>('JWT_REFRESH_SECRET');
+    if (!secret) throw new Error('JWT_REFRESH_SECRET must be configured');
+    return secret;
   }
 }

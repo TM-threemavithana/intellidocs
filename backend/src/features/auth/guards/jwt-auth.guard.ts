@@ -22,4 +22,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     return super.canActivate(context);
   }
+
+  handleRequest<TUser = any>(err: any, user: any, info: any, context: ExecutionContext, status?: any): TUser {
+    const authenticatedUser = super.handleRequest<TUser>(err, user, info, context, status) as TUser & { id: string };
+    const request = context.switchToHttp().getRequest();
+    // Compatibility for legacy controllers: identity always comes from the verified JWT.
+    if (request.query) request.query.userId = authenticatedUser.id;
+    if (request.body && typeof request.body === 'object') request.body.userId = authenticatedUser.id;
+    return authenticatedUser as TUser;
+  }
 }

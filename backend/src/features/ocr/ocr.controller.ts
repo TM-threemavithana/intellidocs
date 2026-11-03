@@ -7,7 +7,7 @@ export class OcrController {
   constructor(private readonly tesseract: TesseractService) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: Number(process.env.MAX_FILE_SIZE || 52428800) } }))
   async upload(@UploadedFile() file: Express.Multer.File, @Body('lang') lang?: string) {
     if (!file) {
       return { error: 'No file uploaded' };

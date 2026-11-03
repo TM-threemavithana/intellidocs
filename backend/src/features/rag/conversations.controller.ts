@@ -10,6 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('conversations')
 export class ConversationsController {
@@ -21,9 +22,9 @@ export class ConversationsController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createConversation(@Body() body: { userId: string; title?: string }) {
+  async createConversation(@Body() body: { title?: string }, @CurrentUser() user: { id: string }) {
     const conversation = await this.conversationsService.createConversation(
-      body.userId,
+      user.id,
       body.title,
     );
 
@@ -40,11 +41,11 @@ export class ConversationsController {
    */
   @Get()
   async getUserConversations(
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
   ) {
     const conversations = await this.conversationsService.getUserConversations(
-      userId,
+      user.id,
       limit ? parseInt(limit) : 20,
     );
 
@@ -60,8 +61,8 @@ export class ConversationsController {
    * GET /conversations/:id?userId=xxx
    */
   @Get(':id')
-  async getConversation(@Param('id') id: string, @Query('userId') userId: string) {
-    const conversation = await this.conversationsService.getConversation(id, userId);
+  async getConversation(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    const conversation = await this.conversationsService.getConversation(id, user.id);
 
     return {
       success: true,
@@ -76,9 +77,9 @@ export class ConversationsController {
   @Get(':id/context')
   async getConversationContext(
     @Param('id') id: string,
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
   ) {
-    const context = await this.conversationsService.getConversationContext(id, userId);
+    const context = await this.conversationsService.getConversationContext(id, user.id);
 
     return {
       success: true,
@@ -93,9 +94,9 @@ export class ConversationsController {
   @Post(':id/clear')
   async clearConversationContext(
     @Param('id') id: string,
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
   ) {
-    const result = await this.conversationsService.clearConversationContext(id, userId);
+    const result = await this.conversationsService.clearConversationContext(id, user.id);
 
     return {
       success: true,
@@ -108,8 +109,8 @@ export class ConversationsController {
    * DELETE /conversations/:id?userId=xxx
    */
   @Delete(':id')
-  async deleteConversation(@Param('id') id: string, @Query('userId') userId: string) {
-    const result = await this.conversationsService.deleteConversation(id, userId);
+  async deleteConversation(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    const result = await this.conversationsService.deleteConversation(id, user.id);
 
     return {
       success: true,
@@ -124,9 +125,9 @@ export class ConversationsController {
   @Get(':id/stats')
   async getConversationStats(
     @Param('id') id: string,
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
   ) {
-    const stats = await this.conversationsService.getConversationStats(id, userId);
+    const stats = await this.conversationsService.getConversationStats(id, user.id);
 
     return {
       success: true,
