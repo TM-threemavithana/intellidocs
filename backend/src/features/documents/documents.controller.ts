@@ -2,12 +2,16 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Param,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  NotFoundException,
   Logger,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -16,7 +20,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class DocumentsController {
   private readonly logger = new Logger(DocumentsController.name);
 
-  constructor(private documentsService: DocumentsService) {}
+  constructor(private documentsService: DocumentsService) { }
 
   /**
    * Upload a PDF document
@@ -85,7 +89,7 @@ export class DocumentsController {
   async getDocument(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     const document = await this.documentsService.getDocument(id);
     if (!document || document.userId !== user.id) {
-      throw new BadRequestException('Document not found');
+      throw new NotFoundException('Document not found');
     }
 
     return {
@@ -95,15 +99,56 @@ export class DocumentsController {
   }
 
   /**
+   * Download original document file (attachment)
+   * GET /documents/:id/download
+   */
+  @Get(':id/download')
+  async downloadDocument(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+    @Res() res: Response,
+  ) {
+    const fileData = await this.documentsService.getDocumentFile(id, user.id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileData.fileName)}"`);
+    res.send(fileData.buffer);
+  }
+
+  /**
+   * View document file inline in browser
+   * GET /documents/:id/view
+   */
+  @Get(':id/view')
+  async viewDocument(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+    @Res() res: Response,
+  ) {
+    const fileData = await this.documentsService.getDocumentFile(id, user.id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileData.fileName)}"`);
+    res.send(fileData.buffer);
+  }
+
+  /**
+   * Delete document and cleanup DB, vector storage, MinIO, and Redis
+   * DELETE /documents/:id
+   */
+  @Delete(':id')
+  async deleteDocument(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.documentsService.deleteDocument(id, user.id);
+  }
+
+  /**
    * Get OCR results for a document
    * GET /documents/:id/ocr
    */
   @Get(':id/ocr')
   async getOCRResults(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     const document = await this.documentsService.getDocument(id);
-    
+
     if (!document || document.userId !== user.id) {
-      throw new BadRequestException('Document not found');
+      throw new NotFoundException('Document not found');
     }
 
     const ocrResults = await this.documentsService.getOCRResults(id);
@@ -134,9 +179,9 @@ export class DocumentsController {
   @Get(':id/ocr-status')
   async getOCRJobStatus(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     const document = await this.documentsService.getDocument(id);
-    
+
     if (!document || document.userId !== user.id) {
-      throw new BadRequestException('Document not found');
+      throw new NotFoundException('Document not found');
     }
 
     const jobStatus = await this.documentsService.getOCRJobStatus(id);

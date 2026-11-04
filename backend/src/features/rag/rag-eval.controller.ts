@@ -1,5 +1,6 @@
 import { Controller, Post, Get } from '@nestjs/common';
 import { RagEvalService } from './rag-eval.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('rag/evaluate')
 export class RagEvalController {
@@ -10,8 +11,8 @@ export class RagEvalController {
    * POST /rag/evaluate
    */
   @Post()
-  async runEvaluation() {
-    const report = await this.ragEvalService.runEvaluation();
+  async runEvaluation(@CurrentUser() user: { id: string }) {
+    const report = await this.ragEvalService.runEvaluation(user?.id);
     return {
       success: true,
       data: report,

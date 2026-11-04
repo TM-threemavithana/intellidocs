@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../core/database/prisma.service';
+import * as crypto from 'crypto';
 
 export interface SentenceAnalysis {
   text: string;
@@ -10,7 +12,7 @@ export interface SentenceAnalysis {
 export interface DetectionResult {
   score: number; // Overall AI Likelihood (0 to 100)
   perplexity: number; // Lexical entropy proxy (0 to 100)
-  burstiness: number; // Sentence variance index (0 to 100)
+  burstiness: number; // Sentence length variation index (0 to 100)
   readability: number; // Flesch Readability index
   sentences: SentenceAnalysis[];
   report: string;
@@ -22,7 +24,10 @@ export class AiDetectorService {
   private readonly ollamaUrl: string;
   private readonly ollamaModel: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     this.ollamaUrl = this.configService.get<string>('OLLAMA_BASE_URL') || 'http://localhost:11434';
     this.ollamaModel = this.configService.get<string>('OLLAMA_MODEL') || 'llama2:latest';
   }
@@ -65,7 +70,7 @@ export class AiDetectorService {
    */
   private calculateReadability(words: string[], sentencesCount: number): number {
     if (words.length === 0 || sentencesCount === 0) return 0;
-    
+
     let totalSyllables = 0;
     for (const word of words) {
       totalSyllables += this.countSyllablesInWord(word);
@@ -81,7 +86,7 @@ export class AiDetectorService {
 
   /**
    * Calculates burstiness index (normalized variance of sentence lengths)
-   * High score = high variation in sentence length (Human).
+   * High score = high variation in sentence length (typical human).
    * Low score = uniform sentence length (often AI).
    */
   private calculateBurstiness(sentences: string[]): { burstiness: number; rawVariance: number } {
@@ -91,15 +96,13 @@ export class AiDetectorService {
 
     const lengths = sentences.map((s) => this.splitWords(s).length);
     const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
-    
+
     if (mean === 0) return { burstiness: 50, rawVariance: 0 };
 
     const variance = lengths.reduce((sum, len) => sum + Math.pow(len - mean, 2), 0) / lengths.length;
     const stdDev = Math.sqrt(variance);
     const cv = stdDev / mean; // Coefficient of Variation
 
-    // Map CV to a 0-100 scale where higher represents more burstiness (human-like)
-    // Typical human CV is around 0.4 to 0.8. Typical AI is 0.1 to 0.3.
     const burstinessScore = Math.min(100, Math.max(0, Math.round(cv * 120)));
 
     return {
@@ -109,7 +112,7 @@ export class AiDetectorService {
   }
 
   /**
-   * Calculates Shannon Entropy of words as a proxy for Lexical Perplexity
+   * Calculates Shannon Entropy of words as a proxy for Lexical Diversity
    */
   private calculateEntropy(words: string[]): number {
     if (words.length === 0) return 0;
@@ -127,8 +130,6 @@ export class AiDetectorService {
       entropy -= p * Math.log2(p);
     }
 
-    // Map typical english text entropy (around 4.0 - 7.0) to a 0-100 scale
-    // Higher entropy = richer vocabulary (typically human).
     const scaledEntropy = Math.min(100, Math.max(0, Math.round((entropy / 8) * 100)));
     return scaledEntropy;
   }
@@ -136,9 +137,9 @@ export class AiDetectorService {
   /**
    * Analyze text for AI patterns using hybrid stats + Ollama model audit.
    */
-  async analyzeText(text: string): Promise<DetectionResult> {
-    this.logger.log(`Performing AI Content detection on input text using model: ${this.ollamaModel}`);
-    
+  async analyzeText(text: string, userId?: string): Promise<DetectionResult> {
+    this.logger.log(`Performing AI Content detection on input text (${text.length} chars)`);
+
     if (!text || text.trim().length < 100) {
       throw new Error('Text must be at least 100 characters long for an accurate analysis.');
     }
@@ -151,35 +152,30 @@ export class AiDetectorService {
     const { burstiness } = this.calculateBurstiness(sentences);
     const perplexity = this.calculateEntropy(words);
 
-    // Human score proxy from stats: High perplexity and high burstiness suggest human authorship
-    // Therefore: low perplexity and low burstiness suggests AI authorship
+    // Statistical indicator: low vocabulary entropy + low sentence variance
     const statisticalAiLikelihood = Math.round((100 - perplexity) * 0.4 + (100 - burstiness) * 0.6);
+
+    let finalScore = statisticalAiLikelihood;
+    let mappedSentences: SentenceAnalysis[] = [];
+    let reportText = '';
 
     try {
       // 2. Query LLM to perform linguistic structure audit
       const sentenceItems = sentences.map((s, idx) => `[S-${idx + 1}] ${s}`).join('\n');
-      
-      const prompt = `You are a professional linguistic forensics and AI Content Detector.
-Analyze the sentences below. For each sentence, evaluate the probability that it was written by an AI language model based on predictability, structure, typical transition phrases, and generic patterns.
 
----
-Sentences to analyze:
+      const prompt = `You are an objective linguistic analyst auditing text for characteristics often found in AI-generated writing.
+Analyze the sentences below:
 ${sentenceItems}
 
----
-Your task is to analyze the text and return a valid JSON object matching the format below.
-Do NOT return any other text, markdown fences, notes, or explanations. Return ONLY the raw JSON object.
-
+Return a valid JSON object matching the format below. Do NOT output markdown or explanation.
 Format:
 {
   "aiLikelihood": 65,
   "sentences": [
-    { "text": "Sentence text here...", "aiProbability": 80, "reason": "Uses typical robotic flow." }
+    { "text": "Sentence text...", "aiProbability": 80, "reason": "Uses repetitive robotic phrasing." }
   ],
-  "report": "Comprehensive evaluation report of writing style..."
-}
-
-Response JSON:`;
+  "report": "Stylometric assessment of vocabulary variation and syntactic uniformity."
+}`;
 
       const response = await fetch(`${this.ollamaUrl}/api/generate`, {
         method: 'POST',
@@ -191,7 +187,7 @@ Response JSON:`;
           prompt,
           stream: false,
           options: {
-            temperature: 0.1, // Highly stable output
+            temperature: 0.1,
           },
         }),
       });
@@ -206,21 +202,18 @@ Response JSON:`;
       const jsonStart = llmOutput.indexOf('{');
       const jsonEnd = llmOutput.lastIndexOf('}');
       if (jsonStart === -1 || jsonEnd === -1 || jsonStart > jsonEnd) {
-        throw new Error('Llm output did not contain valid JSON structure');
+        throw new Error('LLM output did not contain valid JSON structure');
       }
 
       const jsonStr = llmOutput.substring(jsonStart, jsonEnd + 1);
-      const parsedLlmResult = JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonStr);
 
-      const llmScore = parsedLlmResult.aiLikelihood || 50;
-      
-      // 3. Blend Scores (40% statistical metrics, 60% LLM audit)
-      const finalScore = Math.round(statisticalAiLikelihood * 0.4 + llmScore * 0.6);
+      const llmScore = Math.max(0, Math.min(100, parsed.aiLikelihood || 50));
+      finalScore = Math.round(statisticalAiLikelihood * 0.4 + llmScore * 0.6);
 
-      // Match LLM sentence outputs back to original array
-      const mappedSentences: SentenceAnalysis[] = sentences.map((s, idx) => {
-        const found = parsedLlmResult.sentences?.find(
-          (ls: any) => ls.text && (ls.text.includes(s) || s.includes(ls.text))
+      mappedSentences = sentences.map((s) => {
+        const found = parsed.sentences?.find(
+          (ls: any) => ls.text && (ls.text.includes(s) || s.includes(ls.text)),
         );
         return {
           text: s,
@@ -229,38 +222,57 @@ Response JSON:`;
         };
       });
 
-      return {
-        score: finalScore,
-        perplexity,
-        burstiness,
-        readability,
-        sentences: mappedSentences,
-        report: parsedLlmResult.report || 'Stylometric analysis complete. The text contains structural uniformity consistent with current LLM text patterns.',
-      };
+      reportText = parsed.report || `Stylometric forensic score: ${finalScore}%. Combines lexical entropy (${perplexity}%) and sentence length burstiness (${burstiness}%). This is an algorithmic estimate, not definitive proof of authorship.`;
 
     } catch (error) {
-      this.logger.error(`Ollama audit failed, fallback to statistical evaluation: ${error.message}`);
-      
-      // Fallback: If Ollama fails, build a statistical fallback response
-      const fallbackSentences: SentenceAnalysis[] = sentences.map((s) => {
-        const wordsInSentence = this.splitWords(s).length;
-        // Simple variance metric for fallback sentence classification
+      this.logger.warn(`Ollama audit unavailable, using statistical stylometry: ${error.message}`);
+
+      mappedSentences = sentences.map((s) => {
         const isAi = statisticalAiLikelihood > 50;
         return {
           text: s,
           aiProbability: isAi ? 65 : 25,
-          reason: isAi ? 'Sentence exhibits uniform structures consistent with AI patterns.' : 'Sentence shows normal human lexical diversity.',
+          reason: isAi ? 'Sentence exhibits uniform structures consistent with template patterns.' : 'Sentence shows natural human lexical diversity.',
         };
       });
 
-      return {
-        score: statisticalAiLikelihood,
-        perplexity,
-        burstiness,
-        readability,
-        sentences: fallbackSentences,
-        report: `Statistical forensic evaluation complete. Analysis calculated high structural similarity (low burstiness: ${burstiness}%) and low vocabulary divergence (perplexity proxy: ${perplexity}%), leading to the score.`,
-      };
+      reportText = `Statistical stylometry evaluation: Calculated structural uniformity score: ${statisticalAiLikelihood}% (Sentence burstiness: ${burstiness}%, Lexical diversity: ${perplexity}%). Note: Heuristic stylometric indicators carry statistical uncertainty and should not be used as sole proof of authorship.`;
     }
+
+    const result: DetectionResult = {
+      score: finalScore,
+      perplexity,
+      burstiness,
+      readability,
+      sentences: mappedSentences,
+      report: reportText,
+    };
+
+    // Persist result if user is authenticated (fixes dead schema)
+    if (userId) {
+      try {
+        const textHash = crypto.createHash('sha256').update(text).digest('hex').substring(0, 32);
+        await this.prisma.detectionResult.upsert({
+          where: { textHash },
+          create: {
+            userId,
+            textHash,
+            aiProbability: finalScore / 100,
+            confidence: finalScore > 75 ? 'high' : finalScore > 40 ? 'medium' : 'low',
+            perplexityScore: perplexity,
+            burstnessScore: burstiness,
+            highlightedSentences: mappedSentences.filter((s) => s.aiProbability > 50).map((s) => s.text),
+          },
+          update: {
+            aiProbability: finalScore / 100,
+            confidence: finalScore > 75 ? 'high' : finalScore > 40 ? 'medium' : 'low',
+          },
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to persist detection result: ${err.message}`);
+      }
+    }
+
+    return result;
   }
 }

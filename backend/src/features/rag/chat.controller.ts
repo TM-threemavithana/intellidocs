@@ -14,7 +14,8 @@ import {
 import { ChatService } from './chat.service';
 import { StreamingService } from './streaming.service';
 import { CitationsService } from './citations.service';
-import { Observable, interval, map } from 'rxjs';
+import { RAGService } from './rag.service';
+import { Observable } from 'rxjs';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 class AskQuestionDto {
@@ -30,7 +31,8 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly streamingService: StreamingService,
     private readonly citationsService: CitationsService,
-  ) {}
+    private readonly ragService: RAGService,
+  ) { }
 
   /**
    * Ask a question using RAG (with conversation support)
@@ -148,8 +150,8 @@ export class ChatController {
   }
 
   /**
-   * Stream chat response (Server-Sent Events)
-   * GET /chat/stream?question=...&documentId=...&userId=...
+   * Stream chat response with grounded RAG context and citations (Server-Sent Events)
+   * GET /chat/stream?question=...&documentId=...
    */
   @Get('stream')
   @Sse()
@@ -158,36 +160,44 @@ export class ChatController {
     @Query('question') question: string,
     @Query('documentId') documentId?: string,
   ): Observable<MessageEvent> {
-
-    // This is a simplified streaming endpoint
-    // In production, you'd want to:
-    // 1. Retrieve context from embeddings
-    // 2. Stream the LLM response
-    // 3. Send citations as separate events
-
     return new Observable((subscriber) => {
-      const prompt = `Question: ${question}\n\nProvide a concise answer.`;
-      
-      this.streamingService.streamLLMResponse(prompt).subscribe({
-        next: (chunk) => {
+      (async () => {
+        try {
+          const documentIds = documentId ? [documentId] : undefined;
+          const { documentContext, citations } = await this.ragService.prepareContext(
+            question,
+            documentIds,
+            5,
+            user?.id,
+          );
+
+          this.streamingService.streamRAGResponse(question, documentContext, citations).subscribe({
+            next: (chunk) => {
+              subscriber.next({
+                data: chunk,
+              } as MessageEvent);
+            },
+            error: (error) => {
+              subscriber.next({
+                data: { type: 'error', error: error?.message || 'Streaming failed' },
+              } as MessageEvent);
+              subscriber.complete();
+            },
+            complete: () => subscriber.complete(),
+          });
+        } catch (error) {
           subscriber.next({
-            data: chunk,
-          } as MessageEvent);
-        },
-        error: (error) => {
-          subscriber.next({
-            data: { type: 'error', error: error.message },
+            data: { type: 'error', error: error?.message || 'Context preparation failed' },
           } as MessageEvent);
           subscriber.complete();
-        },
-        complete: () => subscriber.complete(),
-      });
+        }
+      })();
     });
   }
 
   /**
    * Get citation statistics
-   * GET /chat/citations/stats?documentId=...&userId=...
+   * GET /chat/citations/stats?documentId=...
    */
   @Get('citations/stats')
   async getCitationStats(

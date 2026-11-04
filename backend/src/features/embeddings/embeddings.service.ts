@@ -1,28 +1,30 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../core/database/prisma.service';
 import { ChromaService, EmbeddingMetadata } from './chroma.service';
-import { ChunkingService, TextChunk } from './chunking.service';
 import { OllamaService } from './ollama.service';
+import { ChunkingService } from './chunking.service';
+import { CachingService } from '../../core/caching/caching.service';
 
 @Injectable()
 export class EmbeddingsService {
   private readonly logger = new Logger(EmbeddingsService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly chromaService: ChromaService,
-    private readonly chunkingService: ChunkingService,
-    private readonly ollamaService: OllamaService,
+    private prisma: PrismaService,
+    private chromaService: ChromaService,
+    private ollamaService: OllamaService,
+    private chunkingService: ChunkingService,
+    private cachingService: CachingService,
   ) {}
 
   /**
-   * Generate embeddings for a document
+   * Generate and store embeddings for a document with tenant scoping (SEC-01, BUG-01)
    */
   async generateEmbeddingsForDocument(documentId: string, userId: string): Promise<void> {
-    this.logger.log(`Generating embeddings for document: ${documentId}`);
+    this.logger.log(`Generating embeddings for document: ${documentId} (user: ${userId})`);
 
-    // Get document
-    const document = await this.prisma.document.findUnique({
+    // Get document ensuring ownership
+    const document = await this.prisma.document.findFirst({
       where: { id: documentId, userId, isDeleted: false },
     });
 
@@ -65,21 +67,20 @@ export class EmbeddingsService {
     const embeddingRecords: any[] = [];
 
     for (const chunk of chunks) {
-      // Generate embedding using simple method (we'll improve this later)
       const embedding = await this.generateEmbedding(chunk.text);
-      
-      // Create unique ID
+
       const vectorId = `${documentId}_p${chunk.pageNumber}_c${chunk.chunkIndex}`;
-      
+
       ids.push(vectorId);
       embeddings.push(embedding);
       documents.push(chunk.text);
-      
+
       const metadata: EmbeddingMetadata = {
         documentId,
+        userId, // SEC-01: Explicit tenant metadata in vector store
         pageNumber: chunk.pageNumber,
         chunkIndex: chunk.chunkIndex,
-        chunkText: chunk.text.substring(0, 200), // Store preview
+        chunkText: chunk.text.substring(0, 200), // Preview
         fileName: document.fileName,
       };
       metadatas.push(metadata);
@@ -103,7 +104,11 @@ export class EmbeddingsService {
       data: embeddingRecords,
     });
 
-    this.logger.log(`✅ Generated ${chunks.length} embeddings for document: ${documentId}`);
+    // Invalidate user and document caches
+    await this.cachingService.invalidateDocumentCache(documentId);
+    await this.cachingService.invalidateUserCache(userId);
+
+    this.logger.log(`✅ Generated and indexed ${chunks.length} embeddings for document: ${documentId}`);
   }
 
   /**
@@ -111,7 +116,6 @@ export class EmbeddingsService {
    */
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
-      // Use OllamaService to generate embeddings
       const embedding = await this.ollamaService.generateEmbedding(text);
       this.logger.debug(`Generated embedding of dimension ${embedding.length}`);
       return embedding;
@@ -122,38 +126,55 @@ export class EmbeddingsService {
   }
 
   /**
-   * Search for similar chunks
+   * Search for similar chunks with strict tenant enforcement (SEC-01)
    */
   async search(
     query: string,
     topK: number = 5,
-    documentIds?: string[], userId?: string,
+    documentIds?: string[],
+    userId?: string,
   ) {
-    this.logger.log(`Searching for: "${query.substring(0, 50)}..."`);
+    if (!userId) {
+      throw new BadRequestException('Authenticated user context is required for vector search');
+    }
 
-    // Generate query embedding
-    const queryEmbedding = await this.generateEmbedding(query);
+    this.logger.log(`Searching for: "${query.substring(0, 50)}..." (user: ${userId})`);
 
-    // Build filter
-    const permittedDocumentIds = await this.prisma.document.findMany({
-      where: { userId, isDeleted: false, ...(documentIds?.length ? { id: { in: documentIds } } : {}) },
+    // Verify permitted documents belonging to this user
+    const permittedDocuments = await this.prisma.document.findMany({
+      where: {
+        userId,
+        isDeleted: false,
+        ...(documentIds && documentIds.length > 0 ? { id: { in: documentIds } } : {}),
+      },
       select: { id: true },
     });
-    const filter = { documentId: { $in: permittedDocumentIds.map((document) => document.id) } };
 
-    // Search ChromaDB
+    if (permittedDocuments.length === 0) {
+      this.logger.log(`No permitted documents found for user: ${userId}`);
+      return [];
+    }
+
+    const permittedIds = permittedDocuments.map((doc) => doc.id);
+    const queryEmbedding = await this.generateEmbedding(query);
+
+    // Filter ChromaDB strictly to documents owned by this user
+    const filter = { documentId: { $in: permittedIds } };
+
     const results = await this.chromaService.search(queryEmbedding, topK, filter);
 
-    this.logger.log(`Found ${results.length} similar chunks`);
+    this.logger.log(`Found ${results.length} similar chunks for user ${userId}`);
     return results;
   }
 
   /**
-   * Get embeddings stats
+   * Get embeddings stats scoped to user
    */
   async getStats(userId: string) {
     const chromaStats = await this.chromaService.getStats();
-    const dbCount = await this.prisma.embedding.count({ where: { document: { userId, isDeleted: false } } });
+    const dbCount = await this.prisma.embedding.count({
+      where: { document: { userId, isDeleted: false } },
+    });
 
     return {
       chromadb: chromaStats,
@@ -162,13 +183,21 @@ export class EmbeddingsService {
   }
 
   /**
-   * Delete embeddings for a document
+   * Delete embeddings for a document with ownership verification
    */
   async deleteEmbeddings(documentId: string, userId: string): Promise<void> {
-    const document = await this.prisma.document.findFirst({ where: { id: documentId, userId, isDeleted: false } });
-    if (!document) throw new NotFoundException('Document not found');
+    const document = await this.prisma.document.findFirst({
+      where: { id: documentId, userId, isDeleted: false },
+    });
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
     await this.chromaService.deleteByDocumentId(documentId);
     await this.prisma.embedding.deleteMany({ where: { documentId } });
+    await this.cachingService.invalidateDocumentCache(documentId);
+    await this.cachingService.invalidateUserCache(userId);
+
     this.logger.log(`Deleted embeddings for document: ${documentId}`);
   }
 }

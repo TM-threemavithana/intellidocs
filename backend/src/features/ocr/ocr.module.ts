@@ -4,6 +4,7 @@ import { TesseractService } from './tesseract.service';
 import { OCRService } from './ocr.service';
 import { OcrController } from './ocr.controller';
 import { OCRProcessor } from './ocr.processor';
+import { EmbeddingsModule } from '../embeddings/embeddings.module';
 
 @Module({
   imports: [
@@ -23,9 +24,10 @@ import { OCRProcessor } from './ocr.processor';
         removeOnFail: false, // Keep failed jobs for debugging
       },
     }),
+    EmbeddingsModule,
   ],
   providers: [TesseractService, OCRService, OCRProcessor],
   controllers: [OcrController],
-  exports: [TesseractService, OCRService, BullModule],
+  exports: [TesseractService, OCRService, OCRProcessor, BullModule],
 })
 export class OcrModule {}

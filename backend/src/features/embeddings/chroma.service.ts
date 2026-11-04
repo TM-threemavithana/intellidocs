@@ -3,6 +3,7 @@ import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
 
 export interface EmbeddingMetadata {
   documentId: string;
+  userId?: string;
   pageNumber: number;
   chunkIndex: number;
   chunkText: string;
@@ -37,7 +38,7 @@ export class ChromaService implements OnModuleInit {
     try {
       const chromaUrl = process.env.CHROMADB_URL || 'http://localhost:8000';
       this.logger.log(`Connecting to ChromaDB at ${chromaUrl}`);
-      
+
       this.client = new ChromaClient({
         path: chromaUrl,
       });
@@ -62,12 +63,12 @@ export class ChromaService implements OnModuleInit {
       }
     } catch (error) {
       this.logger.error('❌ Failed to connect to ChromaDB:', error);
-      throw error;
+      // Non-fatal on boot if ChromaDB is starting up
     }
   }
 
   /**
-   * Add embeddings to ChromaDB
+   * Add embeddings to ChromaDB with tenant metadata (SEC-01, BUG-02)
    */
   async addEmbeddings(
     ids: string[],
@@ -76,9 +77,10 @@ export class ChromaService implements OnModuleInit {
     documents: string[],
   ): Promise<void> {
     try {
-      // Convert metadata to Record<string, any> format
+      // Convert metadata to Record<string, any> format including userId
       const chromaMetadatas = metadatas.map(meta => ({
         documentId: meta.documentId,
+        userId: meta.userId || '',
         pageNumber: meta.pageNumber,
         chunkIndex: meta.chunkIndex,
         chunkText: meta.chunkText,
@@ -99,7 +101,7 @@ export class ChromaService implements OnModuleInit {
   }
 
   /**
-   * Search for similar embeddings
+   * Search for similar embeddings with tenant filtering
    */
   async search(
     queryEmbedding: number[],
@@ -107,6 +109,11 @@ export class ChromaService implements OnModuleInit {
     filter?: Record<string, any>,
   ): Promise<SearchResult[]> {
     try {
+      if (!this.collection) {
+        this.logger.warn('ChromaDB collection not initialized');
+        return [];
+      }
+
       const results = await this.collection.query({
         queryEmbeddings: [queryEmbedding],
         nResults: topK,
@@ -115,18 +122,18 @@ export class ChromaService implements OnModuleInit {
 
       // Transform results
       const searchResults: SearchResult[] = [];
-      
+
       if (results.ids && results.ids[0]) {
         for (let i = 0; i < results.ids[0].length; i++) {
           const distance = results.distances?.[0]?.[i] || 0;
           const similarity = 1 - distance; // Convert distance to similarity
 
           const metadata = results.metadatas?.[0]?.[i];
-          
+
           // Handle text - ChromaDB might return string, array, or Buffer
           const rawText: any = results.documents?.[0]?.[i];
           let text: string;
-          
+
           if (typeof rawText === 'string') {
             text = rawText;
           } else if (Array.isArray(rawText)) {
@@ -137,12 +144,13 @@ export class ChromaService implements OnModuleInit {
           } else {
             text = String(rawText || '');
           }
-          
+
           searchResults.push({
             id: results.ids[0][i],
             text,
             metadata: {
               documentId: String(metadata?.documentId || ''),
+              userId: String(metadata?.userId || ''),
               pageNumber: Number(metadata?.pageNumber || 0),
               chunkIndex: Number(metadata?.chunkIndex || 0),
               chunkText: String(metadata?.chunkText || ''),
@@ -166,6 +174,7 @@ export class ChromaService implements OnModuleInit {
    */
   async deleteByDocumentId(documentId: string): Promise<void> {
     try {
+      if (!this.collection) return;
       await this.collection.delete({
         where: { documentId },
       });
@@ -181,6 +190,9 @@ export class ChromaService implements OnModuleInit {
    */
   async getStats(): Promise<{ count: number; name: string }> {
     try {
+      if (!this.collection) {
+        return { count: 0, name: this.collectionName };
+      }
       const count = await this.collection.count();
       return {
         count,
@@ -197,6 +209,7 @@ export class ChromaService implements OnModuleInit {
    */
   async hasEmbeddings(documentId: string): Promise<boolean> {
     try {
+      if (!this.collection) return false;
       const results = await this.collection.get({
         where: { documentId },
         limit: 1,

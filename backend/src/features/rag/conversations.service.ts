@@ -348,7 +348,7 @@ export class ConversationsService {
    * Estimate token count for context
    */
   private estimateTokenCount(context: ConversationContext): number {
-    let text = JSON.stringify(context);
+    const text = JSON.stringify(context);
     // Rough estimate: 4 characters per token
     return Math.ceil(text.length / 4);
   }

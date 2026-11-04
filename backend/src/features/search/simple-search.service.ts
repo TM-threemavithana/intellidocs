@@ -7,6 +7,8 @@ import { CachingService } from '../../core/caching/caching.service';
 export interface SimpleSearchResult {
   documentId: string;
   documentName: string;
+  chunkText?: string;
+  pageNumber?: number;
   score: number;
   metadata?: any;
 }
@@ -20,159 +22,216 @@ export class SimpleSearchService {
     private readonly chromaService: ChromaService,
     private readonly ollamaService: OllamaService,
     private readonly cachingService: CachingService,
-  ) {}
+  ) { }
 
   /**
-   * Simple search by document name
+   * Keyword search covering document filenames and content chunks (SEC-01, BUG-02)
    */
   async searchByName(
     query: string,
     userId: string,
     limit: number = 10,
   ): Promise<SimpleSearchResult[]> {
-    const documents = await this.prisma.document.findMany({
-      where: {
-        userId,
-        fileName: {
-          contains: query,
-          mode: 'insensitive',
-        },
-        isDeleted: false,
-      },
-      take: limit,
-      select: {
-        id: true,
-        fileName: true,
-        fileSize: true,
-        createdAt: true,
-      },
-    });
+    if (!userId || !query?.trim()) return [];
 
-    return documents.map((doc) => ({
-      documentId: doc.id,
-      documentName: doc.fileName,
-      score: this.calculateSimpleScore(query, doc.fileName),
-      metadata: {
-        fileSize: doc.fileSize,
-        createdAt: doc.createdAt,
-      },
-    }));
+    const [matchingDocs, matchingChunks] = await Promise.all([
+      // 1. Search document filenames
+      this.prisma.document.findMany({
+        where: {
+          userId,
+          fileName: { contains: query, mode: 'insensitive' },
+          isDeleted: false,
+        },
+        take: limit,
+        select: {
+          id: true,
+          fileName: true,
+          fileSize: true,
+          createdAt: true,
+        },
+      }),
+      // 2. Search actual extracted text chunks in PostgreSQL
+      this.prisma.embedding.findMany({
+        where: {
+          document: { userId, isDeleted: false },
+          chunkText: { contains: query, mode: 'insensitive' },
+        },
+        take: limit,
+        select: {
+          documentId: true,
+          chunkText: true,
+          pageNumber: true,
+          chunkIndex: true,
+          document: { select: { fileName: true, fileSize: true, createdAt: true } },
+        },
+      }),
+    ]);
+
+    const results: SimpleSearchResult[] = [];
+    const seenKeys = new Set<string>();
+
+    // Add filename matches
+    for (const doc of matchingDocs) {
+      const key = `${doc.id}_doc`;
+      seenKeys.add(key);
+      results.push({
+        documentId: doc.id,
+        documentName: doc.fileName,
+        chunkText: `Document filename match: ${doc.fileName}`,
+        pageNumber: 1,
+        score: this.calculateSimpleScore(query, doc.fileName),
+        metadata: { fileSize: doc.fileSize, createdAt: doc.createdAt },
+      });
+    }
+
+    // Add chunk content matches
+    for (const chunk of matchingChunks) {
+      const key = `${chunk.documentId}_p${chunk.pageNumber}_c${chunk.chunkIndex}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        results.push({
+          documentId: chunk.documentId,
+          documentName: chunk.document.fileName,
+          chunkText: chunk.chunkText,
+          pageNumber: chunk.pageNumber,
+          score: Math.min(0.95, this.calculateSimpleScore(query, chunk.chunkText)),
+          metadata: { fileSize: chunk.document.fileSize, createdAt: chunk.document.createdAt },
+        });
+      }
+    }
+
+    return results.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
   /**
-   * Vector search using ChromaDB
+   * Vector search using ChromaDB strictly scoped to user documents (SEC-01, BUG-02)
    */
   async vectorSearch(
     query: string,
     userId: string,
     limit: number = 10,
   ): Promise<SimpleSearchResult[]> {
+    if (!userId || !query?.trim()) return [];
+
     try {
-      // Generate embedding
+      // 1. Get all permitted documents for this user
+      const permittedDocs = await this.prisma.document.findMany({
+        where: { userId, isDeleted: false },
+        select: { id: true, fileName: true, fileSize: true, createdAt: true },
+      });
+
+      if (permittedDocs.length === 0) {
+        return [];
+      }
+
+      const docMap = new Map(permittedDocs.map((d) => [d.id, d]));
+      const docIds = Array.from(docMap.keys());
+
+      // 2. Generate query embedding
       const embedding = await this.ollamaService.generateEmbedding(query);
 
-      // Search in ChromaDB
+      // 3. Search in ChromaDB with document ID filter strictly scoped to user's documents
       const chromaResults = await this.chromaService.search(
         embedding,
         limit,
-        { userId },
+        { documentId: { $in: docIds } },
       );
 
       const results: SimpleSearchResult[] = [];
 
       for (const result of chromaResults) {
-        if (result.metadata?.documentId) {
-          const document = await this.prisma.document.findUnique({
-            where: { id: result.metadata.documentId },
-            select: { id: true, fileName: true },
+        const docId = result.metadata?.documentId;
+        if (docId && docMap.has(docId)) {
+          const doc = docMap.get(docId)!;
+          results.push({
+            documentId: doc.id,
+            documentName: doc.fileName,
+            chunkText: result.text || result.metadata?.chunkText || '',
+            pageNumber: result.metadata?.pageNumber || 1,
+            score: Math.round(result.similarity * 100) / 100,
+            metadata: {
+              ...result.metadata,
+              fileSize: doc.fileSize,
+              createdAt: doc.createdAt,
+            },
           });
-
-          if (document) {
-            results.push({
-              documentId: document.id,
-              documentName: document.fileName,
-              score: result.similarity,
-              metadata: result.metadata,
-            });
-          }
         }
       }
 
       return results;
     } catch (error) {
-      this.logger.error(`Vector search failed: ${error.message}`);
+      this.logger.error(`Vector search failed for user ${userId}: ${error.message}`);
       return [];
     }
   }
 
   /**
-   * Hybrid search (simple name search + vector search)
+   * Hybrid search combining keyword and semantic vector search with normalized fusion
    */
   async hybridSearch(
     query: string,
     userId: string,
     limit: number = 10,
   ): Promise<SimpleSearchResult[]> {
-    const [nameResults, vectorResults] = await Promise.all([
+    if (!userId || !query?.trim()) return [];
+
+    const [keywordResults, vectorResults] = await Promise.all([
       this.searchByName(query, userId, limit),
       this.vectorSearch(query, userId, limit),
     ]);
 
-    // Combine and deduplicate results
     const resultMap = new Map<string, SimpleSearchResult>();
 
-    // Add name search results (weight: 0.4)
-    for (const result of nameResults) {
-      resultMap.set(result.documentId, {
+    // Add keyword results (weight: 0.4)
+    for (const result of keywordResults) {
+      const key = `${result.documentId}_p${result.pageNumber || 1}`;
+      resultMap.set(key, {
         ...result,
         score: result.score * 0.4,
       });
     }
 
-    // Add/merge vector search results (weight: 0.6)
+    // Merge vector search results (weight: 0.6)
     for (const result of vectorResults) {
-      if (resultMap.has(result.documentId)) {
-        const existing = resultMap.get(result.documentId)!;
-        existing.score += result.score * 0.6;
+      const key = `${result.documentId}_p${result.pageNumber || 1}`;
+      if (resultMap.has(key)) {
+        const existing = resultMap.get(key)!;
+        existing.score = Math.min(1.0, existing.score + result.score * 0.6);
+        if (!existing.chunkText && result.chunkText) {
+          existing.chunkText = result.chunkText;
+        }
       } else {
-        resultMap.set(result.documentId, {
+        resultMap.set(key, {
           ...result,
           score: result.score * 0.6,
         });
       }
     }
 
-    // Sort by score and return top results
     return Array.from(resultMap.values())
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   }
 
   /**
-   * Calculate simple similarity score
+   * Calculate simple similarity score based on term matching
    */
   private calculateSimpleScore(query: string, text: string): number {
-    const queryLower = query.toLowerCase();
-    const textLower = text.toLowerCase();
+    const queryLower = query.toLowerCase().trim();
+    const textLower = text.toLowerCase().trim();
 
-    // Exact match
     if (textLower === queryLower) return 1.0;
+    if (textLower.includes(queryLower)) return 0.85;
 
-    // Contains query
-    if (textLower.includes(queryLower)) return 0.8;
+    const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
+    if (queryWords.length === 0) return 0.5;
 
-    // Word-level matching
-    const queryWords = queryLower.split(/\s+/);
-    const textWords = textLower.split(/\s+/);
-    const matches = queryWords.filter((word) =>
-      textWords.some((tw) => tw.includes(word)),
-    ).length;
-
-    return matches / queryWords.length * 0.6;
+    const matches = queryWords.filter((word) => textLower.includes(word)).length;
+    return Math.min(0.8, (matches / queryWords.length) * 0.7);
   }
 
   /**
-   * Get search statistics
+   * Get search statistics strictly scoped to user
    */
   async getSearchStats(userId: string) {
     const [totalDocuments, recentSearches] = await Promise.all([

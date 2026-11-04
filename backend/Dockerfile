@@ -40,5 +40,5 @@ RUN npm run build
 # Expose port
 EXPOSE 3000
 
-# Start the application
-CMD ["npm", "run", "start:dev"]
+# Start the application in production mode (DEV-01 remediation)
+CMD ["npm", "run", "start:prod"]

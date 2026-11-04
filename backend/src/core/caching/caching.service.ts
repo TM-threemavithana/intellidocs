@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class CachingService {
@@ -47,7 +48,7 @@ export class CachingService {
     try {
       const value = await this.redis.get(key);
       if (!value) return null;
-      
+
       return JSON.parse(value) as T;
     } catch (error) {
       this.logger.warn(`Cache get error for key ${key}: ${error.message}`);
@@ -132,51 +133,103 @@ export class CachingService {
   }
 
   /**
-   * Cache search results
+   * Cache search results with strict tenant scoping (SEC-02)
    */
-  async cacheSearchResults(queryHash: string, results: any): Promise<void> {
-    const key = `search:${queryHash}`;
+  async cacheSearchResults(userIdOrHash: string, queryHashOrResults: any, maybeResults?: any): Promise<void> {
     const ttl = 60 * 60; // 1 hour
-    await this.set(key, results, ttl);
+    if (maybeResults !== undefined) {
+      const userId = userIdOrHash;
+      const queryHash = queryHashOrResults as string;
+      const key = `search:${userId}:${queryHash}`;
+      await this.set(key, maybeResults, ttl);
+    } else {
+      const key = `search:legacy:${userIdOrHash}`;
+      await this.set(key, queryHashOrResults, ttl);
+    }
   }
 
   /**
-   * Get cached search results
+   * Get cached search results with strict tenant scoping (SEC-02)
    */
-  async getCachedSearchResults(queryHash: string): Promise<any | null> {
-    const key = `search:${queryHash}`;
+  async getCachedSearchResults(userIdOrHash: string, maybeQueryHash?: string): Promise<any | null> {
+    if (maybeQueryHash !== undefined) {
+      const key = `search:${userIdOrHash}:${maybeQueryHash}`;
+      return await this.get(key);
+    }
+    const key = `search:legacy:${userIdOrHash}`;
     return await this.get(key);
   }
 
   /**
-   * Cache LLM response
+   * Cache LLM response with strict tenant scoping (SEC-02)
    */
-  async cacheLLMResponse(questionHash: string, response: string): Promise<void> {
-    const key = `llm:${questionHash}`;
+  async cacheLLMResponse(userIdOrHash: string, questionHashOrResponse: string, maybeResponse?: string): Promise<void> {
     const ttl = 30 * 60; // 30 minutes
-    await this.set(key, response, ttl);
+    if (maybeResponse !== undefined) {
+      const userId = userIdOrHash;
+      const questionHash = questionHashOrResponse;
+      const key = `llm:${userId}:${questionHash}`;
+      await this.set(key, maybeResponse, ttl);
+    } else {
+      const key = `llm:legacy:${userIdOrHash}`;
+      await this.set(key, questionHashOrResponse, ttl);
+    }
   }
 
   /**
-   * Get cached LLM response
+   * Get cached LLM response with strict tenant scoping (SEC-02)
    */
-  async getCachedLLMResponse(questionHash: string): Promise<string | null> {
-    const key = `llm:${questionHash}`;
+  async getCachedLLMResponse(userIdOrHash: string, maybeQuestionHash?: string): Promise<string | null> {
+    if (maybeQuestionHash !== undefined) {
+      const key = `llm:${userIdOrHash}:${maybeQuestionHash}`;
+      return await this.get<string>(key);
+    }
+    const key = `llm:legacy:${userIdOrHash}`;
     return await this.get<string>(key);
   }
 
   /**
-   * Generate hash for caching key
+   * Invalidate all cached queries and LLM responses for a specific tenant (SEC-02)
+   */
+  async invalidateUserCache(userId: string): Promise<void> {
+    if (!this.enabled || !this.redis) return;
+
+    try {
+      const searchKeys = await this.redis.keys(`search:${userId}:*`);
+      const llmKeys = await this.redis.keys(`llm:${userId}:*`);
+      const keysToDelete = [...searchKeys, ...llmKeys];
+
+      if (keysToDelete.length > 0) {
+        await this.redis.del(...keysToDelete);
+        this.logger.log(`Invalidated ${keysToDelete.length} cached entries for user ${userId}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to invalidate user cache for ${userId}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Invalidate embeddings cache for a specific document
+   */
+  async invalidateDocumentCache(documentId: string): Promise<void> {
+    if (!this.enabled || !this.redis) return;
+
+    try {
+      const keys = await this.redis.keys(`embedding:${documentId}:*`);
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+        this.logger.log(`Invalidated ${keys.length} cached embeddings for document ${documentId}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to invalidate document cache for ${documentId}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Cryptographically secure SHA-256 hash for caching keys
    */
   generateHash(input: string): string {
-    // Simple hash function (in production, use crypto)
-    let hash = 0;
-    for (let i = 0; i < input.length; i++) {
-      const char = input.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return hash.toString(36);
+    return crypto.createHash('sha256').update(input).digest('hex').substring(0, 32);
   }
 
   /**
@@ -190,7 +243,7 @@ export class CachingService {
     try {
       const info = await this.redis.info();
       const keys = await this.redis.dbsize();
-      
+
       return {
         enabled: true,
         connected: this.redis.status === 'ready',
@@ -198,65 +251,26 @@ export class CachingService {
         info: this.parseRedisInfo(info),
       };
     } catch (error) {
-      return { enabled: true, error: error.message };
+      return { enabled: false, error: error.message };
     }
   }
 
   /**
-   * Parse Redis INFO command output
+   * Parse Redis INFO string
    */
-  private parseRedisInfo(info: string): any {
+  private parseRedisInfo(info: string): Record<string, string> {
     const lines = info.split('\r\n');
-    const stats: any = {};
-    
-    lines.forEach((line) => {
-      if (line.includes(':')) {
+    const result: Record<string, string> = {};
+
+    for (const line of lines) {
+      if (line && !line.startsWith('#')) {
         const [key, value] = line.split(':');
         if (key && value) {
-          stats[key] = value;
+          result[key] = value;
         }
       }
-    });
-
-    return {
-      usedMemory: stats.used_memory_human,
-      connectedClients: stats.connected_clients,
-      totalCommandsProcessed: stats.total_commands_processed,
-    };
-  }
-
-  /**
-   * Clear all cache
-   */
-  async clearAll(): Promise<boolean> {
-    if (!this.enabled || !this.redis) return false;
-
-    try {
-      await this.redis.flushdb();
-      this.logger.log('Cache cleared');
-      return true;
-    } catch (error) {
-      this.logger.error(`Failed to clear cache: ${error.message}`);
-      return false;
     }
-  }
 
-  /**
-   * Invalidate cache keys matching pattern
-   */
-  async invalidatePattern(pattern: string): Promise<number> {
-    if (!this.enabled || !this.redis) return 0;
-
-    try {
-      const keys = await this.redis.keys(pattern);
-      if (keys.length === 0) return 0;
-
-      await this.redis.del(...keys);
-      this.logger.log(`Invalidated ${keys.length} cache keys matching pattern: ${pattern}`);
-      return keys.length;
-    } catch (error) {
-      this.logger.error(`Failed to invalidate pattern ${pattern}: ${error.message}`);
-      return 0;
-    }
+    return result;
   }
 }

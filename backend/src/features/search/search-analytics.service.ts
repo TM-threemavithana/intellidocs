@@ -35,7 +35,7 @@ export interface ZeroResultQuery {
 export class SearchAnalyticsService {
   private readonly logger = new Logger(SearchAnalyticsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   /**
    * Get search overview statistics
@@ -100,7 +100,7 @@ export class SearchAnalyticsService {
 
     for (const search of searches) {
       const dateKey = search.createdAt.toISOString().split('T')[0]; // YYYY-MM-DD
-      
+
       if (trendMap.has(dateKey)) {
         const existing = trendMap.get(dateKey)!;
         existing.count++;
@@ -154,11 +154,12 @@ export class SearchAnalyticsService {
 
     for (const search of searches) {
       const clickedDocs = new Set(search.clickedResults);
-      
+
       // Each search result could have included multiple documents
       // We approximate by assuming top N results were shown
-      const shownDocs = Math.min(search.resultsCount, 10);
-      
+      // Top N results approximated
+      void Math.min(search.resultsCount, 10);
+
       for (const docId of clickedDocs) {
         if (documentStats.has(docId)) {
           const stats = documentStats.get(docId)!;
@@ -220,7 +221,7 @@ export class SearchAnalyticsService {
 
     for (const search of searches) {
       const queryLower = search.query.toLowerCase();
-      
+
       if (queryMap.has(queryLower)) {
         const existing = queryMap.get(queryLower)!;
         existing.count++;

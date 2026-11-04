@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { CachingService } from '../../core/caching/caching.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('analytics')
 export class AnalyticsController {
@@ -10,19 +11,19 @@ export class AnalyticsController {
   ) {}
 
   /**
-   * Get usage statistics
-   * GET /analytics/usage?userId=...&startDate=...&endDate=...
+   * Get usage statistics scoped to the authenticated user (SEC-03)
+   * GET /analytics/usage?startDate=...&endDate=...
    */
   @Get('usage')
   async getUsageStats(
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
 
-    const stats = await this.analyticsService.getUsageStats(userId, start, end);
+    const stats = await this.analyticsService.getUsageStats(user.id, start, end);
 
     return {
       success: true,
@@ -31,12 +32,12 @@ export class AnalyticsController {
   }
 
   /**
-   * Get performance metrics
-   * GET /analytics/performance?userId=...
+   * Get performance metrics scoped to the authenticated user
+   * GET /analytics/performance
    */
   @Get('performance')
-  async getPerformanceMetrics(@Query('userId') userId?: string) {
-    const metrics = await this.analyticsService.getPerformanceMetrics(userId);
+  async getPerformanceMetrics(@CurrentUser() user: { id: string }) {
+    const metrics = await this.analyticsService.getPerformanceMetrics(user.id);
 
     return {
       success: true,
@@ -45,16 +46,16 @@ export class AnalyticsController {
   }
 
   /**
-   * Get user activity
-   * GET /analytics/user/:userId?days=30
+   * Get activity for the authenticated user
+   * GET /analytics/user/activity?days=30
    */
-  @Get('user/:userId')
+  @Get('user/activity')
   async getUserActivity(
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
     @Query('days') days?: string,
   ) {
     const daysNum = days ? parseInt(days) : 30;
-    const activity = await this.analyticsService.getUserActivity(userId, daysNum);
+    const activity = await this.analyticsService.getUserActivity(user.id, daysNum);
 
     return {
       success: true,
@@ -63,7 +64,7 @@ export class AnalyticsController {
   }
 
   /**
-   * Get system health
+   * Get system health metrics
    * GET /analytics/health
    */
   @Get('health')
