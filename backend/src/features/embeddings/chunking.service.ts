@@ -489,7 +489,7 @@ export class ChunkingService {
   /**
    * Enrich chunks with metadata
    */
-  private enrichChunksWithMetadata(chunks: TextChunk[], fullText: string): TextChunk[] {
+  private enrichChunksWithMetadata(chunks: TextChunk[], _fullText: string): TextChunk[] {
     return chunks.map((chunk) => {
       const metadata: ChunkMetadata = {};
 

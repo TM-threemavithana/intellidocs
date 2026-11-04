@@ -1,56 +1,58 @@
 <h1 align="center">🧠 IntelliDocs AI</h1>
 
 <p align="center">
-  <strong>An AI-powered Document Intelligence Platform with advanced RAG (Retrieval-Augmented Generation) capabilities.</strong>
+  <strong>Production-Grade Multi-Tenant Document Intelligence & RAG Platform</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
-  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" />
-  <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" />
-  <img src="https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/Next.js%2014-black?style=for-the-badge&logo=next.js&logoColor=white" />
+  <img src="https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white" />
+  <img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" />
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" />
+  <img src="https://img.shields.io/badge/ChromaDB-FC521F?style=for-the-badge&logo=chroma&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
 </p>
 
 ---
 
 ## 🚀 Overview
 
-**IntelliDocs AI** transforms static documents into interactive knowledge bases. By leveraging LLMs and vector embeddings, it allows users to "chat" with their documents, extract key insights, and automate information retrieval across massive datasets.
+**IntelliDocs AI** is an enterprise-grade document intelligence platform that enables secure, multi-tenant document ingestion, optical character recognition (OCR), semantic search, and Retrieval-Augmented Generation (RAG).
 
-### ✨ Key Features
+Users can upload PDF documents, extract text from scanned pages via automated background OCR workers, perform hybrid keyword-vector search, and query their knowledge base with grounded citations pointing to exact source pages.
 
-- **Hybrid RAG Pipeline:** Combines semantic vector search with keyword matching for highly accurate document retrieval.
-- **Multi-Format Support:** Ingests PDF, DOCX, TXT, and CSV files seamlessly.
-- **Contextual Memory:** Maintains conversation history for multi-turn reasoning about document contents.
-- **Containerized Architecture:** Fully dockerized for isolated, reproducible deployments.
+---
+
+## ✨ Key Capabilities
+
+- **Hybrid RAG Pipeline:** Dense semantic vector retrieval (ChromaDB) fused with lexical keyword search using Reciprocal Rank Fusion (RRF).
+- **Background OCR Pipeline:** Asynchronous document processing via Bull queue and Redis, combining fast PDF text extraction (`pdf-parse`) with automated OCR fallback (`Tesseract.js`) for scanned documents.
+- **Strict Multi-Tenant Isolation:** Complete data separation across PostgreSQL (Prisma), MinIO object storage, ChromaDB vector collections, and Redis caching.
+- **Grounded Citations & Prompt Defenses:** RAG answers strictly reference `<document_context>` passages with page numbers, accompanied by prompt injection defenses.
+- **PDF Manipulation Toolkit:** High-performance PDF merging, page splitting, and image-to-PDF compilation with DoS and memory exhaustion guards.
+- **AI Content Analysis:** Stylometric text analyzer evaluating perplexity, burstiness, and repetitive phrase structures.
+- **Resume & Job Matcher:** Contextual resume analysis matching candidate qualifications against job descriptions.
+- **Local RAGAS Evaluation Runner:** Evaluates RAG pipelines locally using Faithfulness, Answer Relevance, Context Recall, and Context Precision benchmarks without fabricated scores.
 
 ---
 
 ## 📐 Architecture
 
-IntelliDocs AI leverages a robust, containerized architecture to process documents and orchestrate the RAG pipeline.
-- **Vector Database**: **ChromaDB** is used to store and query document embeddings.
-- **LLM Orchestration**: **Ollama** runs locally (defaulting to Llama 2), with optional fallbacks to Groq or Google Gemini.
-- **Storage**: **MinIO** handles S3-compatible object storage for uploaded documents.
-- **Core DB & Cache**: **PostgreSQL** and **Redis**.
-- **Frontend (`/frontend`):** A modern, responsive React interface.
-- **Backend (`/backend`):** A Node.js/TypeScript service.
-
 ```mermaid
-graph LR
-    User([User]) -->|Uploads Document| API(Backend API)
-    User -->|Asks Question| API
+graph TD
+    Client["Next.js 14 Frontend<br/>(Port 3001)"] -->|"JWT Auth / REST / SSE"| Backend["NestJS Backend API<br/>(Port 3000)"]
     
-    API -->|Stores File| MinIO[(MinIO Storage)]
-    API -->|Extracts Text & Chunks| API
-    
-    API -->|Generates Embeddings| LLM{Ollama LLM}
-    API -->|Stores Embeddings| Chroma[(ChromaDB Vector DB)]
-    
-    API -->|Retrieves Context| Chroma
-    API -->|Sends Context + Query| LLM
-    LLM -->|Returns Answer| API
-    API -->|Displays to| User
+    subgraph Storage & Infrastructure
+        Backend -->|"Prisma ORM"| DB[("PostgreSQL 15")]
+        Backend -->|"S3 API"| MinIO[("MinIO Object Storage")]
+        Backend -->|"Queues & Scoped Cache"| Redis[("Redis 7 / Bull Queue")]
+        Backend -->|"Vector Embeddings"| Chroma[("ChromaDB Vector DB")]
+        Backend -->|"Local LLM / Embeddings"| Ollama[("Ollama (llama2)")]
+    end
+
+    Redis -->|"Async OCR Jobs"| Worker["Bull OCR Worker<br/>(Tesseract.js)"]
+    Worker -->|"Auto Vectorize"| Chroma
 ```
 
 ---
@@ -58,72 +60,82 @@ graph LR
 ## 🛠️ Quick Start
 
 ### Prerequisites
-Before you begin, ensure you have the following installed on your system:
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
+- [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/)
+- [Node.js](https://nodejs.org/) v20+ (for local development)
 
-### 1. Environment Setup
-Copy the example environment file and add your LLM API keys:
+### 1. Environment Configuration
+Copy the configuration template:
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
 ```
+*(Customize passwords and secrets in `.env` before starting).*
 
-### 2. Launch Platform
-The fastest way to get started is using Docker Compose:
+### 2. Launch Services with Docker Compose
 ```bash
-docker-compose up --build -d
+docker compose up -d
 ```
 
-- **Frontend UI:** `http://localhost:3000`
-- **Backend API:** `http://localhost:8080`
+| Service | Local URL / Port | Description |
+|---|---|---|
+| **Frontend UI** | `http://localhost:3001` | Next.js 14 web client |
+| **Backend API** | `http://localhost:3000` | NestJS REST API server |
+| **MinIO Console** | `http://localhost:9001` | S3 Storage Dashboard (`minioadmin`) |
+| **ChromaDB** | `http://localhost:8000` | Vector database |
+| **Ollama** | `http://localhost:11434` | Local LLM inference server |
 
 ---
 
-## 💻 Usage
+## 💻 Local Development (Bare Metal)
 
-Once the platform is running:
-1. Open the **Frontend UI** in your browser.
-2. **Upload a Document** (PDF, TXT, DOCX, or CSV) via the drag-and-drop interface.
-3. Wait a few seconds for the document to be processed and vectorized.
-4. **Start Chatting**: Use the chat input at the bottom of the screen to ask questions about your document!
+If running outside Docker:
 
-```text
-+-------------------------------------------------------------+
-| 🧠 IntelliDocs AI                                  [Logout] |
-|-------------------------------------------------------------|
-|                                                             |
-|  [ Upload Document (PDF, TXT, DOCX, CSV) 📁 ]               |
-|                                                             |
-|  Current Document: quarterly_report.pdf (Processed ✓)       |
-|                                                             |
-|  ---------------------------------------------------------  |
-|  | User: What were the key revenue drivers?              |  |
-|  |                                                       |  |
-|  | AI: Based on the document, the key revenue drivers    |  |
-|  | were Q3 enterprise sales and the new cloud API...     |  |
-|  ---------------------------------------------------------  |
-|                                                             |
-|  [ Ask a question about your document...             ] [->] |
-+-------------------------------------------------------------+
+```bash
+# 1. Install dependencies
+npm --prefix backend install
+npm --prefix frontend install
+
+# 2. Generate Prisma Client
+npx --prefix backend prisma generate
+
+# 3. Start Backend (runs on port 3000)
+npm --prefix backend run start:dev
+
+# 4. Start Frontend (runs on port 3001)
+npm --prefix frontend run dev
 ```
 
 ---
 
-## 📈 Current Status
-Check [CURRENT_STATUS.md](CURRENT_STATUS.md) for the latest development updates, known limitations, and immediate next steps in the sprint.
+## 🧪 Testing & Verification
+
+IntelliDocs AI includes comprehensive automated test suites covering authentication, multi-tenant isolation, caching, and document manipulation:
+
+```bash
+# Run backend test suites
+npm --prefix backend test
+
+# Run frontend test suites
+npm --prefix frontend test
+
+# Run full project type check & lint
+npm --prefix backend run build
+npm --prefix backend run lint
+npm --prefix frontend run build
+npm --prefix frontend run lint
+```
+
+Refer to [TESTING_GUIDE.md](./TESTING_GUIDE.md) for detailed verification workflows and multi-tenant security verification instructions.
 
 ---
 
-## 🤝 Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## 🔒 Security & Multi-Tenancy
+
+- **No Shared Vector Leakage:** ChromaDB vector embeddings require explicit `userId` tags, and vector searches strictly filter by document IDs owned by the authenticated tenant.
+- **Tenant-Scoped Redis Caching:** Keys are isolated via `search:<userId>:<hash>` and `llm:<userId>:<hash>`.
+- **Infrastructure Hardening:** All container ports in `docker-compose.yml` are bound exclusively to `127.0.0.1` loopback to prevent exposure across public network interfaces.
+- **Resource Exhaustion Guards:** Upload and PDF processing operations enforce strict upper bounds (max 50MB per file, max 20 merge files, max 50 split segments).
 
 ---
 
 ## 📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+UNLICENSED — IntelliDocs AI

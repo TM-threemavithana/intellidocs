@@ -7,9 +7,10 @@ import { ChunkingService } from './chunking.service';
 import { OllamaService } from './ollama.service';
 import { QueryEnhancementService } from './query-enhancement.service';
 import { DatabaseModule } from '../../core/database/database.module';
+import { CachingModule } from '../../core/caching/caching.module';
 
 @Module({
-  imports: [DatabaseModule, ConfigModule],
+  imports: [DatabaseModule, ConfigModule, CachingModule],
   controllers: [EmbeddingsController],
   providers: [
     EmbeddingsService,

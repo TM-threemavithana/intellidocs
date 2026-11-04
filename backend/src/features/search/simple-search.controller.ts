@@ -13,6 +13,7 @@ import {
 import { SimpleSearchService } from './simple-search.service';
 import { SearchHistoryService } from './search-history.service';
 import { SearchAnalyticsService } from './search-analytics.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('search')
 export class SimpleSearchController {
@@ -22,48 +23,37 @@ export class SimpleSearchController {
     private readonly searchService: SimpleSearchService,
     private readonly historyService: SearchHistoryService,
     private readonly analyticsService: SearchAnalyticsService,
-  ) {}
+  ) { }
 
   // ==================== SEARCH ENDPOINTS ====================
 
   /**
-   * POST /search/hybrid - Hybrid search
+   * POST /search/hybrid - Hybrid search with verified user context (SEC-03)
    */
   @Post('hybrid')
   async hybridSearch(
-    @Body() body: {
-      query: string;
-      userId: string;
-      limit?: number;
-    },
+    @Body() body: { query: string; limit?: number },
+    @CurrentUser() user: { id: string },
   ) {
     try {
-      const { query, userId, limit = 10 } = body;
+      const { query, limit = 10 } = body;
+      const userId = user.id;
 
-      if (!query || !userId) {
-        throw new HttpException(
-          'Query and userId are required',
-          HttpStatus.BAD_REQUEST,
-        );
+      if (!query || query.trim().length === 0) {
+        throw new HttpException('Query is required', HttpStatus.BAD_REQUEST);
       }
 
       const startTime = Date.now();
-      const results = await this.searchService.hybridSearch(query, userId, limit);
+      const results = await this.searchService.hybridSearch(query.trim(), userId, limit);
       const timeTaken = Date.now() - startTime;
 
       // Record in history
-      await this.historyService.recordSearch(
-        userId,
-        query,
-        results.length,
-        'hybrid',
-        timeTaken,
-      );
+      await this.historyService.recordSearch(userId, query.trim(), results.length, 'hybrid', timeTaken);
 
       return {
         success: true,
         data: {
-          query,
+          query: query.trim(),
           searchType: 'hybrid',
           resultsCount: results.length,
           timeTaken,
@@ -77,43 +67,32 @@ export class SimpleSearchController {
   }
 
   /**
-   * POST /search/vector - Vector search
+   * POST /search/vector - Vector search with verified user context (SEC-03)
    */
   @Post('vector')
   async vectorSearch(
-    @Body() body: {
-      query: string;
-      userId: string;
-      limit?: number;
-    },
+    @Body() body: { query: string; limit?: number },
+    @CurrentUser() user: { id: string },
   ) {
     try {
-      const { query, userId, limit = 10 } = body;
+      const { query, limit = 10 } = body;
+      const userId = user.id;
 
-      if (!query || !userId) {
-        throw new HttpException(
-          'Query and userId are required',
-          HttpStatus.BAD_REQUEST,
-        );
+      if (!query || query.trim().length === 0) {
+        throw new HttpException('Query is required', HttpStatus.BAD_REQUEST);
       }
 
       const startTime = Date.now();
-      const results = await this.searchService.vectorSearch(query, userId, limit);
+      const results = await this.searchService.vectorSearch(query.trim(), userId, limit);
       const timeTaken = Date.now() - startTime;
 
       // Record in history
-      await this.historyService.recordSearch(
-        userId,
-        query,
-        results.length,
-        'vector',
-        timeTaken,
-      );
+      await this.historyService.recordSearch(userId, query.trim(), results.length, 'vector', timeTaken);
 
       return {
         success: true,
         data: {
-          query,
+          query: query.trim(),
           searchType: 'vector',
           resultsCount: results.length,
           timeTaken,
@@ -127,43 +106,32 @@ export class SimpleSearchController {
   }
 
   /**
-   * POST /search/keyword - Keyword search (by name)
+   * POST /search/keyword - Keyword search with verified user context (SEC-03)
    */
   @Post('keyword')
   async keywordSearch(
-    @Body() body: {
-      query: string;
-      userId: string;
-      limit?: number;
-    },
+    @Body() body: { query: string; limit?: number },
+    @CurrentUser() user: { id: string },
   ) {
     try {
-      const { query, userId, limit = 10 } = body;
+      const { query, limit = 10 } = body;
+      const userId = user.id;
 
-      if (!query || !userId) {
-        throw new HttpException(
-          'Query and userId are required',
-          HttpStatus.BAD_REQUEST,
-        );
+      if (!query || query.trim().length === 0) {
+        throw new HttpException('Query is required', HttpStatus.BAD_REQUEST);
       }
 
       const startTime = Date.now();
-      const results = await this.searchService.searchByName(query, userId, limit);
+      const results = await this.searchService.searchByName(query.trim(), userId, limit);
       const timeTaken = Date.now() - startTime;
 
       // Record in history
-      await this.historyService.recordSearch(
-        userId,
-        query,
-        results.length,
-        'keyword',
-        timeTaken,
-      );
+      await this.historyService.recordSearch(userId, query.trim(), results.length, 'keyword', timeTaken);
 
       return {
         success: true,
         data: {
-          query,
+          query: query.trim(),
           searchType: 'keyword',
           resultsCount: results.length,
           timeTaken,
@@ -179,30 +147,20 @@ export class SimpleSearchController {
   // ==================== HISTORY ENDPOINTS ====================
 
   /**
-   * GET /search/history - Get search history
+   * GET /search/history - Get search history strictly for authenticated user (SEC-03)
    */
   @Get('history')
   async getHistory(
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
   ) {
     try {
-      if (!userId) {
-        throw new HttpException('userId is required', HttpStatus.BAD_REQUEST);
-      }
-
       const history = await this.historyService.getHistory(
-        userId,
+        user.id,
         limit ? parseInt(limit) : 50,
       );
 
-      return {
-        success: true,
-        data: {
-          count: history.length,
-          history,
-        },
-      };
+      return { success: true, data: { count: history.length, history } };
     } catch (error) {
       this.logger.error(`Failed to get search history: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -210,32 +168,22 @@ export class SimpleSearchController {
   }
 
   /**
-   * GET /search/suggestions - Get search suggestions
+   * GET /search/suggestions - Get search suggestions for authenticated user
    */
   @Get('suggestions')
   async getSuggestions(
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
     @Query('query') partialQuery?: string,
     @Query('limit') limit?: string,
   ) {
     try {
-      if (!userId) {
-        throw new HttpException('userId is required', HttpStatus.BAD_REQUEST);
-      }
-
       const suggestions = await this.historyService.getSuggestions(
-        userId,
+        user.id,
         partialQuery,
         limit ? parseInt(limit) : 10,
       );
 
-      return {
-        success: true,
-        data: {
-          count: suggestions.length,
-          suggestions,
-        },
-      };
+      return { success: true, data: { count: suggestions.length, suggestions } };
     } catch (error) {
       this.logger.error(`Failed to get suggestions: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -247,35 +195,21 @@ export class SimpleSearchController {
    */
   @Post('suggestions/autocomplete')
   async autocomplete(
-    @Body() body: {
-      userId: string;
-      partialQuery: string;
-      limit?: number;
-    },
+    @Body() body: { partialQuery: string; limit?: number },
+    @CurrentUser() user: { id: string },
   ) {
     try {
-      const { userId, partialQuery, limit = 5 } = body;
+      const { partialQuery, limit = 5 } = body;
 
-      if (!userId || !partialQuery) {
-        throw new HttpException(
-          'userId and partialQuery are required',
-          HttpStatus.BAD_REQUEST,
-        );
+      if (!partialQuery) {
+        throw new HttpException('partialQuery is required', HttpStatus.BAD_REQUEST);
       }
 
-      const suggestions = await this.historyService.getAutocomplete(
-        userId,
-        partialQuery,
-        limit,
-      );
+      const suggestions = await this.historyService.getAutocomplete(user.id, partialQuery, limit);
 
       return {
         success: true,
-        data: {
-          partialQuery,
-          count: suggestions.length,
-          suggestions,
-        },
+        data: { partialQuery, count: suggestions.length, suggestions },
       };
     } catch (error) {
       this.logger.error(`Autocomplete failed: ${error.message}`);
@@ -284,24 +218,17 @@ export class SimpleSearchController {
   }
 
   /**
-   * DELETE /search/history/:id - Delete search entry
+   * DELETE /search/history/:id - Delete search entry with ownership check
    */
   @Delete('history/:id')
   async deleteSearch(
     @Param('id') searchId: string,
-    @Query('userId') userId: string,
+    @CurrentUser() user: { id: string },
   ) {
     try {
-      if (!userId) {
-        throw new HttpException('userId is required', HttpStatus.BAD_REQUEST);
-      }
+      const deleted = await this.historyService.deleteSearch(user.id, searchId);
 
-      const deleted = await this.historyService.deleteSearch(userId, searchId);
-
-      return {
-        success: deleted,
-        message: deleted ? 'Search deleted' : 'Search not found',
-      };
+      return { success: deleted, message: deleted ? 'Search deleted' : 'Search not found' };
     } catch (error) {
       this.logger.error(`Failed to delete search: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -309,22 +236,14 @@ export class SimpleSearchController {
   }
 
   /**
-   * DELETE /search/history/clear - Clear all search history
+   * DELETE /search/history/clear - Clear all search history for authenticated user
    */
   @Delete('history/clear')
-  async clearHistory(@Query('userId') userId: string) {
+  async clearHistory(@CurrentUser() user: { id: string }) {
     try {
-      if (!userId) {
-        throw new HttpException('userId is required', HttpStatus.BAD_REQUEST);
-      }
+      const count = await this.historyService.clearHistory(user.id);
 
-      const count = await this.historyService.clearHistory(userId);
-
-      return {
-        success: true,
-        message: `Cleared ${count} search entries`,
-        data: { count },
-      };
+      return { success: true, message: `Cleared ${count} search entries`, data: { count } };
     } catch (error) {
       this.logger.error(`Failed to clear history: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -332,26 +251,20 @@ export class SimpleSearchController {
   }
 
   /**
-   * GET /search/popular - Get popular searches
+   * GET /search/popular - Get popular searches scoped to authenticated user
    */
   @Get('popular')
   async getPopularSearches(
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
   ) {
     try {
       const popular = await this.historyService.getPopularSearches(
-        userId,
+        user.id,
         limit ? parseInt(limit) : 10,
       );
 
-      return {
-        success: true,
-        data: {
-          count: popular.length,
-          popular,
-        },
-      };
+      return { success: true, data: { count: popular.length, popular } };
     } catch (error) {
       this.logger.error(`Failed to get popular searches: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -365,19 +278,16 @@ export class SimpleSearchController {
    */
   @Get('analytics/overview')
   async getSearchOverview(
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('days') days?: string,
   ) {
     try {
       const overview = await this.analyticsService.getOverview(
-        userId,
+        user.id,
         days ? parseInt(days) : 30,
       );
 
-      return {
-        success: true,
-        data: overview,
-      };
+      return { success: true, data: overview };
     } catch (error) {
       this.logger.error(`Failed to get search overview: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -389,22 +299,16 @@ export class SimpleSearchController {
    */
   @Get('analytics/trends')
   async getSearchTrends(
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('days') days?: string,
   ) {
     try {
       const trends = await this.analyticsService.getTrends(
-        userId,
+        user.id,
         days ? parseInt(days) : 30,
       );
 
-      return {
-        success: true,
-        data: {
-          count: trends.length,
-          trends,
-        },
-      };
+      return { success: true, data: { count: trends.length, trends } };
     } catch (error) {
       this.logger.error(`Failed to get search trends: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -416,22 +320,16 @@ export class SimpleSearchController {
    */
   @Get('analytics/popular-documents')
   async getPopularDocuments(
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
   ) {
     try {
       const documents = await this.analyticsService.getPopularDocuments(
-        userId,
+        user.id,
         limit ? parseInt(limit) : 10,
       );
 
-      return {
-        success: true,
-        data: {
-          count: documents.length,
-          documents,
-        },
-      };
+      return { success: true, data: { count: documents.length, documents } };
     } catch (error) {
       this.logger.error(`Failed to get popular documents: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -443,22 +341,16 @@ export class SimpleSearchController {
    */
   @Get('analytics/zero-results')
   async getZeroResultQueries(
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
   ) {
     try {
       const queries = await this.analyticsService.getZeroResultQueries(
-        userId,
+        user.id,
         limit ? parseInt(limit) : 20,
       );
 
-      return {
-        success: true,
-        data: {
-          count: queries.length,
-          queries,
-        },
-      };
+      return { success: true, data: { count: queries.length, queries } };
     } catch (error) {
       this.logger.error(`Failed to get zero-result queries: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -470,19 +362,16 @@ export class SimpleSearchController {
    */
   @Get('analytics/performance')
   async getSearchPerformance(
-    @Query('userId') userId?: string,
+    @CurrentUser() user: { id: string },
     @Query('days') days?: string,
   ) {
     try {
       const metrics = await this.analyticsService.getPerformanceMetrics(
-        userId,
+        user.id,
         days ? parseInt(days) : 30,
       );
 
-      return {
-        success: true,
-        data: metrics,
-      };
+      return { success: true, data: metrics };
     } catch (error) {
       this.logger.error(`Failed to get search performance: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -493,17 +382,11 @@ export class SimpleSearchController {
    * GET /search/analytics/quality - Search quality score
    */
   @Get('analytics/quality')
-  async getSearchQuality(@Query('userId') userId?: string) {
+  async getSearchQuality(@CurrentUser() user: { id: string }) {
     try {
-      const score = await this.analyticsService.getQualityScore(userId);
+      const score = await this.analyticsService.getQualityScore(user.id);
 
-      return {
-        success: true,
-        data: {
-          score,
-          rating: this.getRating(score),
-        },
-      };
+      return { success: true, data: { score, rating: this.getRating(score) } };
     } catch (error) {
       this.logger.error(`Failed to get search quality: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -514,18 +397,11 @@ export class SimpleSearchController {
    * GET /search/stats - Get search statistics
    */
   @Get('stats')
-  async getSearchStats(@Query('userId') userId: string) {
+  async getSearchStats(@CurrentUser() user: { id: string }) {
     try {
-      if (!userId) {
-        throw new HttpException('userId is required', HttpStatus.BAD_REQUEST);
-      }
+      const stats = await this.searchService.getSearchStats(user.id);
 
-      const stats = await this.searchService.getSearchStats(userId);
-
-      return {
-        success: true,
-        data: stats,
-      };
+      return { success: true, data: stats };
     } catch (error) {
       this.logger.error(`Failed to get search stats: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);

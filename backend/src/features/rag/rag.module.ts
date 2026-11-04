@@ -9,6 +9,7 @@ import { StreamingService } from './streaming.service';
 import { CitationsService } from './citations.service';
 import { DatabaseModule } from '../../core/database/database.module';
 import { EmbeddingsModule } from '../embeddings/embeddings.module';
+import { CachingModule } from '../../core/caching/caching.module';
 import { RagEvalService } from './rag-eval.service';
 import { RagEvalController } from './rag-eval.controller';
 
@@ -17,6 +18,7 @@ import { RagEvalController } from './rag-eval.controller';
     ConfigModule,
     DatabaseModule,
     EmbeddingsModule,
+    CachingModule,
   ],
   controllers: [ChatController, ConversationsController, RagEvalController],
   providers: [

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ProtectedRoute } from '@/components/features/auth/ProtectedRoute';
 import { ragEvalApi } from '@/lib/api';
 
@@ -34,23 +34,21 @@ export default function RagEvaluationPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<DetailReport | null>(null);
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
-
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       const response = await ragEvalApi.getHistory();
       if (response.success && response.data) {
         setHistory(response.data);
-        if (response.data.length > 0 && !activeReport) {
-          setActiveReport(response.data[0]);
-        }
+        setActiveReport((prev) => (!prev && response.data.length > 0 ? response.data[0] : prev));
       }
     } catch (err: any) {
       console.error('Failed to retrieve history', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   const handleRunEvaluation = async () => {
     setLoading(true);

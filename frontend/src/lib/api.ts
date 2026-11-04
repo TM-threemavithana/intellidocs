@@ -15,9 +15,13 @@ api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const authStorage = localStorage.getItem('auth-storage');
     if (authStorage) {
-      const { state } = JSON.parse(authStorage);
-      if (state?.token) {
-        config.headers.Authorization = `Bearer ${state.token}`;
+      try {
+        const { state } = JSON.parse(authStorage);
+        if (state?.token) {
+          config.headers.Authorization = `Bearer ${state.token}`;
+        }
+      } catch (e) {
+        console.error('Failed to parse auth token:', e);
       }
     }
   }
@@ -38,49 +42,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-// Document API
-export const documentApi = {
-  /**
-   * Upload a PDF document
-   */
-  upload: async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await api.post('/documents/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-
-    return response.data;
-  },
-
-  /**
-   * Get document by ID
-   */
-  getDocument: async (documentId: string) => {
-    const response = await api.get(`/documents/${documentId}`);
-    return response.data;
-  },
-
-  /**
-   * Get OCR results for a document
-   */
-  getOCRResults: async (documentId: string) => {
-    const response = await api.get(`/documents/${documentId}/ocr`);
-    return response.data;
-  },
-
-  /**
-   * Get OCR job status
-   */
-  getOCRJobStatus: async (documentId: string) => {
-    const response = await api.get(`/documents/${documentId}/ocr-status`);
-    return response.data;
-  },
-};
 
 // Types
 export interface Document {
@@ -135,16 +96,100 @@ export interface RAGResponse {
   responseTime: number;
 }
 
+export interface SearchResult {
+  documentId: string;
+  documentName: string;
+  chunkText: string;
+  score: number;
+  pageNumber: number;
+}
+
+// Document API
+export const documentApi = {
+  /**
+   * Upload a PDF document
+   */
+  upload: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await api.post('/documents/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    return response.data;
+  },
+
+  /**
+   * Get all documents for current user
+   */
+  getAll: async (): Promise<Document[]> => {
+    const response = await api.get('/documents');
+    return response.data;
+  },
+
+  /**
+   * Get document by ID
+   */
+  getDocument: async (documentId: string) => {
+    const response = await api.get(`/documents/${documentId}`);
+    return response.data;
+  },
+
+  /**
+   * Download original document as PDF blob
+   */
+  download: async (documentId: string, fileName?: string) => {
+    const response = await api.get(`/documents/${documentId}/download`, {
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName || `document-${documentId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Delete document and all associated resources
+   */
+  delete: async (documentId: string) => {
+    const response = await api.delete(`/documents/${documentId}`);
+    return response.data;
+  },
+
+  /**
+   * Get OCR results for a document
+   */
+  getOCRResults: async (documentId: string) => {
+    const response = await api.get(`/documents/${documentId}/ocr`);
+    return response.data;
+  },
+
+  /**
+   * Get OCR job status
+   */
+  getOCRJobStatus: async (documentId: string) => {
+    const response = await api.get(`/documents/${documentId}/ocr-status`);
+    return response.data;
+  },
+};
+
 // Chat API
 export const chatApi = {
   /**
    * Ask a question using RAG
    */
-  ask: async (question: string, documentId?: string, userId?: string) => {
+  ask: async (question: string, documentId?: string, conversationId?: string) => {
     const response = await api.post('/chat/ask', {
       question,
       documentId,
-      userId,
+      conversationId,
     });
     return response.data;
   },
@@ -152,9 +197,8 @@ export const chatApi = {
   /**
    * Get chat history
    */
-  getHistory: async (userId?: string, limit: number = 50, offset: number = 0) => {
+  getHistory: async (limit: number = 50, offset: number = 0) => {
     const params = new URLSearchParams({
-      ...(userId && { userId }),
       limit: limit.toString(),
       offset: offset.toString(),
     });
@@ -165,9 +209,8 @@ export const chatApi = {
   /**
    * Get chat history for a specific document
    */
-  getDocumentHistory: async (documentId: string, userId?: string, limit: number = 50) => {
+  getDocumentHistory: async (documentId: string, limit: number = 50) => {
     const params = new URLSearchParams({
-      ...(userId && { userId }),
       limit: limit.toString(),
     });
     const response = await api.get(`/chat/history/document/${documentId}?${params}`);
@@ -177,28 +220,52 @@ export const chatApi = {
   /**
    * Delete a chat message
    */
-  deleteMessage: async (chatId: string, userId?: string) => {
-    const params = userId ? `?userId=${userId}` : '';
-    const response = await api.delete(`/chat/${chatId}${params}`);
+  deleteMessage: async (chatId: string) => {
+    const response = await api.delete(`/chat/${chatId}`);
     return response.data;
   },
 
   /**
    * Clear all chat history
    */
-  clearHistory: async (userId?: string) => {
-    const params = userId ? `?userId=${userId}` : '';
-    const response = await api.delete(`/chat/history/clear${params}`);
+  clearHistory: async () => {
+    const response = await api.delete('/chat/history/clear');
     return response.data;
   },
 
   /**
    * Get chat statistics
    */
-  getStats: async (userId?: string) => {
-    const params = userId ? `?userId=${userId}` : '';
-    const response = await api.get(`/chat/stats${params}`);
+  getStats: async () => {
+    const response = await api.get('/chat/stats');
     return response.data;
+  },
+};
+
+// Search API
+export const searchApi = {
+  /**
+   * Hybrid Search
+   */
+  hybrid: async (query: string, limit: number = 10) => {
+    const response = await api.post('/search/hybrid', { query, limit });
+    return response.data?.data?.results || response.data?.results || [];
+  },
+
+  /**
+   * Vector Search
+   */
+  vector: async (query: string, limit: number = 10) => {
+    const response = await api.post('/search/vector', { query, limit });
+    return response.data?.data?.results || response.data?.results || [];
+  },
+
+  /**
+   * Keyword Search
+   */
+  keyword: async (query: string, limit: number = 10) => {
+    const response = await api.post('/search/keyword', { query, limit });
+    return response.data?.data?.results || response.data?.results || [];
   },
 };
 

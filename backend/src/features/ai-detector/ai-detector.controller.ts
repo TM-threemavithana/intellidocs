@@ -1,16 +1,20 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { AiDetectorService } from './ai-detector.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('ai-detector')
 export class AiDetectorController {
   constructor(private readonly aiDetectorService: AiDetectorService) {}
 
   /**
-   * Analyzes text for AI content indicators.
+   * Analyzes text for AI content indicators with optional user persistence.
    * POST /ai-detector/analyze
    */
   @Post('analyze')
-  async analyzeText(@Body('text') text: string) {
+  async analyzeText(
+    @Body('text') text: string,
+    @CurrentUser() user?: { id: string },
+  ) {
     if (!text || text.trim().length === 0) {
       throw new BadRequestException('Text body is required');
     }
@@ -19,7 +23,7 @@ export class AiDetectorController {
     }
 
     try {
-      const result = await this.aiDetectorService.analyzeText(text);
+      const result = await this.aiDetectorService.analyzeText(text.trim(), user?.id);
       return {
         success: true,
         data: result,
